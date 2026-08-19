@@ -2,22 +2,30 @@ import json
 import os
 
 class ConfigLoader:
-    def __init__(self, default_config):
+    def __init__(self, default_config, user_config_path='config.json'):
         self.default_config = default_config
-        self.loaded_config = default_config.copy()
+        self.user_config_path = user_config_path
+        self.config = self.load_config()
 
-    def load_from_file(self, file_path):
-        if os.path.isfile(file_path):
-            with open(file_path, 'r') as f:
-                file_config = json.load(f)
-                self.loaded_config.update(file_config)
+    def load_config(self):
+        config = self.default_config.copy()  # Start with defaults
+        if os.path.exists(self.user_config_path):
+            with open(self.user_config_path, 'r') as file:
+                user_config = json.load(file)
+                config.update(user_config)  # Override defaults with user settings
+        return config
 
-    def get_config(self):
-        return self.loaded_config
+    def get(self, key, default=None):
+        return self.config.get(key, default)
 
+# Example usage
 if __name__ == '__main__':
-    defaults = {'volume': 50, 'resolution': '1920x1080', 'fullscreen': True}
-    config_loader = ConfigLoader(defaults)
-    config_loader.load_from_file('config.json')
-    current_config = config_loader.get_config()
-    print(current_config)
+    default_settings = {
+        'fullscreen': False,
+        'volume': 75,
+        'resolution': {'width': 1920, 'height': 1080}
+    }
+    config_loader = ConfigLoader(default_settings)
+    print(config_loader.get('fullscreen'))
+    print(config_loader.get('volume'))
+    print(config_loader.get('resolution'))
