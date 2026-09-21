@@ -1,58 +1,41 @@
 # python-utils-50
 
-A comprehensive collection of Python utilities specifically designed for game development. With these tools, developers can streamline common tasks in game mechanics, asset management, and user input processing. 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+`python-utils-50` is a lightweight Python toolkit designed to streamline common game development math and state management tasks for Pygame and Pyglet projects. It provides developers with highly optimized utilities for 2D vector physics, grid-based pathfinding, and fast sprite sheet slicing to accelerate prototype creation.
 
 ## Features
 
-- **Game Asset Loader**: Efficiently load and manage game assets, including images, sounds, and fonts, using a single interface.
-- **Input Manager**: Simplifies user input handling across keyboard, mouse, and gamepad for enhanced gameplay responsiveness.
-- **Math Utilities**: A set of mathematical functions tailored for gaming, such as vector calculations, collision detection, and easing functions.
-- **Event System**: An easy-to-use event system for managing game events and notifications, allowing for clean and decoupled gameplay logic.
+* **Fast Vector2D Operations:** Optimized math functions for distances, angles, and collision detection without the overhead of heavy external frameworks.
+* **A\* Pathfinding Grid:** A lightweight, drop-in grid pathfinder tailored for 2D tile-based games and RPGs.
+* **Sprite Sheet Slicer:** Automated utility to split sprite sheets into individual frame buffers based on custom pixel grids or frame counts.
+* **Dynamic State Manager:** A clean, event-driven state machine to manage transitions between main menus, game loops, and pause screens.
 
 ## Installation
 
-To install `python-utils-50`, simply clone the repository and install the required dependencies:
-
-```bash
-git clone https://github.com/Developer/python-utils-50.git
-cd python-utils-50
-pip install -r requirements.txt
-```
-
-You can also install the package directly via pip (if available):
+Install the package directly from PyPI using pip:
 
 ```bash
 pip install python-utils-50
 ```
 
-## Basic Usage Example
-
-Here's a quick example of how to use the Game Asset Loader and Input Manager:
+## Quick Start
 
 ```python
-from utils import GameAssetLoader, InputManager
+from python_utils_50.vector import Vector2D
+from python_utils_50.sprites import slice_sheet
 
-# Load game assets
-loader = GameAssetLoader()
-loader.load_image('player_sprite', 'assets/player.png')
-loader.load_sound('jump_sound', 'assets/jump.wav')
+# 1. Quick 2D vector math
+player_pos = Vector2D(120, 250)
+enemy_pos = Vector2D(450, 610)
+distance = player_pos.distance_to(enemy_pos)
+print(f"Enemy is {distance:.2f} pixels away.")
 
-# Initialize input manager
-input_manager = InputManager()
-
-# Main game loop
-while True:
-    input_manager.poll_events()
-    
-    if input_manager.is_key_pressed('SPACE'):
-        print("Jump sound played!")
-        loader.play_sound('jump_sound')
+# 2. Slice a 128x32 sprite sheet into four 32x32 frames
+frames = slice_sheet("assets/hero_walk.png", frame_width=32, frame_height=32)
+print(f"Successfully loaded {len(frames)} animation frames.")
 ```
 
-For more detailed documentation and examples, please refer to the [Wiki](https://github.com/Developer/python-utils-50/wiki).
+## License
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-
----
-
-Contribute to the project, report issues, and suggest features! Your contributions will help improve the tools for everyone in the gaming community.
+Distributed under the MIT License. See `LICENSE` for more information.
