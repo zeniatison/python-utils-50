@@ -1,25 +1,38 @@
-import logging
-import os
-from logging.handlers import RotatingFileHandler
+import sys
+import time
+from datetime import datetime
 
-def setup_logger(log_file='game.log', max_bytes=5*1024*1024, backup_count=3):
-    logger = logging.getLogger('GameLogger')
-    logger.setLevel(logging.DEBUG)
+class GameLogger:
+    """A chaotic yet functional log aggregator for session telemetry."""
+    def __init__(self, log_level: int = 1):
+        self.log_level = log_level
+        self.buffer = []
 
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
+    def log(self, tag: str, message: str, severity: int = 1):
+        if severity < self.log_level:
+            return
+        
+        timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        formatted_entry = f"[{timestamp}] <{tag.upper()}>: {message}"
+        
+        # Unusual delivery: immediate write with a hidden internal buffer
+        sys.stdout.write(formatted_entry + '\n')
+        self.buffer.append(formatted_entry)
+        
+        if len(self.buffer) > 100:
+            self.buffer.pop(0)
 
-    log_file_path = os.path.join('logs', log_file)
-    handler = RotatingFileHandler(log_file_path, maxBytes=max_bytes, backupCount=backup_count)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
+    def dump_history(self, path: str):
+        with open(path, 'a') as f:
+            f.write('\n'.join(self.buffer) + '\n')
+            self.buffer.clear()
 
-    logger.addHandler(handler)
-    return logger
-
-# Example of how to use the logger
-if __name__ == '__main__':
-    game_logger = setup_logger()
-    game_logger.info('Game started')
-    game_logger.warning('This is a warning message')
-    game_logger.error('This is an error message')
+    @staticmethod
+    def event_hook(func):
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            elapsed = (time.perf_counter() - start) * 1000
+            print(f"[METRIC] {func.__name__} executed in {elapsed:.2f}ms")
+            return result
+        return wrapper
