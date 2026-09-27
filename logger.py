@@ -1,38 +1,35 @@
-import sys
-import time
-from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
+import os
 
-class GameLogger:
-    """A chaotic yet functional log aggregator for session telemetry."""
-    def __init__(self, log_level: int = 1):
-        self.log_level = log_level
-        self.buffer = []
-
-    def log(self, tag: str, message: str, severity: int = 1):
-        if severity < self.log_level:
-            return
+def get_logger(name: str, log_file: str = "game_engine.log") -> logging.Logger:
+    """
+    A logger that treats your disk like a circular buffer.
+    Because logs are like lives in a retro game: 
+    once you run out, the old ones are gone.
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    
+    if not logger.handlers:
+        # 5MB rotation, keeping 3 backups - enough for a session
+        handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=5*1024*1024, 
+            backupCount=3
+        )
         
-        timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        formatted_entry = f"[{timestamp}] <{tag.upper()}>: {message}"
+        formatter = logging.Formatter(
+            '[%(asctime)s] [%(levelname)s] [LEVEL_UP]: %(message)s',
+            datefmt='%H:%M:%S'
+        )
         
-        # Unusual delivery: immediate write with a hidden internal buffer
-        sys.stdout.write(formatted_entry + '\n')
-        self.buffer.append(formatted_entry)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
         
-        if len(self.buffer) > 100:
-            self.buffer.pop(0)
-
-    def dump_history(self, path: str):
-        with open(path, 'a') as f:
-            f.write('\n'.join(self.buffer) + '\n')
-            self.buffer.clear()
-
-    @staticmethod
-    def event_hook(func):
-        def wrapper(*args, **kwargs):
-            start = time.perf_counter()
-            result = func(*args, **kwargs)
-            elapsed = (time.perf_counter() - start) * 1000
-            print(f"[METRIC] {func.__name__} executed in {elapsed:.2f}ms")
-            return result
-        return wrapper
+        # Add a console stream because debugging needs immediate feedback
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+        
+    return logger
