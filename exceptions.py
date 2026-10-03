@@ -1,47 +1,35 @@
-import random
+import functools
 import time
-from typing import Any, List, Dict
 
-class GamingException(Exception):
-    """Base exception for unusual gaming mechanics edge cases."""
-    def __init__(self, message: str, severity: str = "soft_lock"):
-        super().__init__(message)
-        self.severity = severity
-        self.timestamp = time.time()
+class GamePerformanceError(Exception):
+    """Base exception for high-frequency gaming operations."""
+    pass
 
-class InventoryOverflowError(GamingException):
-    """Raised when inventory limits are exceeded. Features a recovery helper."""
-    def __init__(self, message: str, current_weight: float, max_weight: float):
-        super().__init__(f"{message} ({current_weight}/{max_weight}kg)", severity="encumbered")
-        self.current_weight = current_weight
-        self.max_weight = max_weight
+def cache_frame_data(func):
+    """Lru cache with TTL-like expiration for transient state."""
+    cache = {}
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        key = (args, tuple(kwargs.items()))
+        now = time.monotonic()
+        if key in cache:
+            val, expiry = cache[key]
+            if now < expiry:
+                return val
+        result = func(*args, **kwargs)
+        cache[key] = (result, now + 0.016)
+        return result
+    return wrapper
 
-    def auto_discard_trash(self, inventory: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Creative recovery: discards items of low value to free up space."""
-        sorted_inv = sorted(inventory, key=lambda x: x.get("value", 0))
-        freed_weight = 0.0
-        while sorted_inv and (self.current_weight - freed_weight > self.max_weight):
-            discarded = sorted_inv.pop(0)
-            freed_weight += discarded.get("weight", 1.0)
-        return sorted_inv
+class BufferOverflowException(GamePerformanceError):
+    def __init__(self, buffer_id):
+        super().__init__(f"Buffer {buffer_id} exceeded latency constraints")
 
-class RageQuitException(GamingException):
-    """Raised when a frustration threshold is exceeded, imposing cooldowns."""
-    def __init__(self, reason: str, salty_rating: int = 10):
-        super().__init__(
-            f"RageQuit initiated: {reason} (Salt Level: {salty_rating}/10)",
-            severity="alt_f4"
-        )
-        self.cooldown_period = salty_rating * 5
+class HotPathViolation(GamePerformanceError):
+    def __init__(self, func_name):
+        super().__init__(f"Function {func_name} executed outside time budget")
 
-    def cooling_down(self) -> bool:
-        return time.time() - self.timestamp < self.cooldown_period
-
-def resolve_anomaly(exc: GamingException) -> str:
-    """Resolves anomalous gaming errors into actionable state changes."""
-    if isinstance(exc, InventoryOverflowError):
-        diff = exc.current_weight - exc.max_weight
-        return f"cleanup recommended: {diff:.2f} units over limit"
-    if isinstance(exc, RageQuitException):
-        return f"cooldown mandated: {exc.cooldown_period} seconds remain"
-    return "default resurrection path triggered"
+@cache_frame_data
+def calculate_hitbox(coords):
+    # Simulate expensive geometry math
+    return tuple(x * 1.05 for x in coords)
