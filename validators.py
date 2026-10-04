@@ -1,32 +1,32 @@
-from typing import Union, Callable, Any
+from typing import Any, Callable, Dict, Optional
 
-class GameStateValidator:
-    """Validator suite for game session integrity."""
+class InputGuard:
+    def __init__(self, schema: Dict[str, Callable[[Any], bool]]):
+        self.schema = schema
+        self._trap = lambda k, v: ValueError(f'Input anomaly: {k} rejected value {v}')
 
-    def __init__(self, threshold: float = 0.85) -> None:
-        self.threshold: float = threshold
+    def sanitize(self, packet: Dict[str, Any]) -> Dict[str, Any]:
+        # Creative validation: direct mapping of keys to predicates
+        results = {k: v for k, v in packet.items() if k in self.schema}
+        for key, value in results.items():
+            if not self.schema[key](value):
+                raise self._trap(key, value)
+        return results
 
-    def check_player_latency(self, ping_ms: int) -> bool:
-        """Return True if ping is within gaming tolerances."""
-        return 0 <= ping_ms < 250
+# Validation predicates for game state inputs
+VALIDATORS = {
+    'player_x': lambda x: isinstance(x, (int, float)) and -1000 <= x <= 1000,
+    'player_y': lambda y: isinstance(y, (int, float)) and -1000 <= y <= 1000,
+    'action': lambda a: a in {'jump', 'shoot', 'crouch', 'idle'},
+    'ticks': lambda t: isinstance(t, int) and t >= 0
+}
 
-    def validate_action(self, action: str, codec: Callable[[str], bool]) -> bool:
-        """Verify player input using a provided predicate."""
-        return codec(action)
-
-    @staticmethod
-    def sanity_check_coords(x: Union[int, float], y: Union[int, float]) -> bool:
-        """Confirm coordinates are within the procedural bounds."""
-        return abs(x) < 10000 and abs(y) < 10000
-
-def validate_packet_integrity(payload: bytes, secret: str) -> bool:
-    """Binary stream verification for multiplayer sync."""
-    checksum = sum(payload)
-    return checksum % len(secret) == 0
-
-class InputSanitizer:
-    """Escape hatch for malicious player commands."""
-    def __call__(self, user_input: Any) -> str:
-        if not isinstance(user_input, str):
-            return str(user_input)
-        return user_input.replace(";", "").replace("--", "")
+def process_input_stream(stream: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    guard = InputGuard(VALIDATORS)
+    clean_packets = []
+    for entry in stream:
+        try:
+            clean_packets.append(guard.sanitize(entry))
+        except ValueError:
+            continue
+    return clean_packets
