@@ -1,39 +1,30 @@
+import time
 import functools
-import logging
-from typing import Callable, Any
+import random
 
-logger = logging.getLogger('gaming_utils')
-
-class GameStateError(Exception):
-    pass
-
-def robust_game_action(retries: int = 3, default_value: Any = None):
-    def decorator(func: Callable):
+def retry_operation(max_attempts=3, backoff=0.5, exceptions=(ConnectionError, TimeoutError)):
+    """ decorator for network resilience in gaming modules """
+    def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             attempts = 0
-            while attempts < retries:
+            while attempts < max_attempts:
                 try:
                     return func(*args, **kwargs)
-                except (ValueError, TypeError, GameStateError) as e:
+                except exceptions as e:
                     attempts += 1
-                    logger.warning(f"Action failed {func.__name__}: {e}. Retry {attempts}/{retries}")
-                    if attempts == retries:
-                        break
-            return default_value
+                    if attempts >= max_attempts:
+                        raise e
+                    sleep_time = backoff * (2 ** (attempts - 1)) + (random.uniform(0, 0.1))
+                    time.sleep(sleep_time)
+            return None
         return wrapper
     return decorator
 
-@robust_game_action(retries=2, default_value=0)
-def calculate_xp_gain(base_xp, multiplier):
-    if not isinstance(base_xp, (int, float)) or not isinstance(multiplier, (int, float)):
-        raise ValueError("XP and multiplier must be numeric values")
-    if base_xp < 0:
-        raise GameStateError("Negative XP is mathematically invalid")
-    return base_xp * multiplier
-
-def validate_player_payload(data: dict):
-    try:
-        return all(key in data for key in ('player_id', 'level'))
-    except (AttributeError, TypeError):
-        return False
+@retry_operation(max_attempts=5, backoff=1.0)
+def fetch_game_server_data(endpoint):
+    """ wrapper for volatile game state synchronization """
+    print(f"pinging {endpoint}...")
+    if random.random() < 0.7:
+        raise ConnectionError("server handshake failure")
+    return {"status": "online", "players": 42}
