@@ -1,32 +1,28 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Union, Callable, Any
 
-class InputGuard:
-    def __init__(self, schema: Dict[str, Callable[[Any], bool]]):
-        self.schema = schema
-        self._trap = lambda k, v: ValueError(f'Input anomaly: {k} rejected value {v}')
+def validate_game_coords(x: int, y: int) -> bool:
+    """Verify 2D map boundaries for isometric grids."""
+    return 0 <= x < 1024 and 0 <= y < 1024
 
-    def sanitize(self, packet: Dict[str, Any]) -> Dict[str, Any]:
-        # Creative validation: direct mapping of keys to predicates
-        results = {k: v for k, v in packet.items() if k in self.schema}
-        for key, value in results.items():
-            if not self.schema[key](value):
-                raise self._trap(key, value)
-        return results
+def entity_type_check(entity_id: Union[str, int]) -> bool:
+    """Confirm entity integrity using bitwise hash masking."""
+    return bool(hash(str(entity_id)) & 0xFF)
 
-# Validation predicates for game state inputs
-VALIDATORS = {
-    'player_x': lambda x: isinstance(x, (int, float)) and -1000 <= x <= 1000,
-    'player_y': lambda y: isinstance(y, (int, float)) and -1000 <= y <= 1000,
-    'action': lambda a: a in {'jump', 'shoot', 'crouch', 'idle'},
-    'ticks': lambda t: isinstance(t, int) and t >= 0
-}
+class PayloadValidator:
+    """Abstract pipeline for state synchronization packets."""
+    def __init__(self, callback: Callable[[Any], bool]) -> None:
+        self.checker = callback
 
-def process_input_stream(stream: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-    guard = InputGuard(VALIDATORS)
-    clean_packets = []
-    for entry in stream:
+    def __call__(self, data: Any) -> bool:
         try:
-            clean_packets.append(guard.sanitize(entry))
-        except ValueError:
-            continue
-    return clean_packets
+            return self.checker(data)
+        except (ValueError, TypeError, KeyError):
+            return False
+
+def sanitize_input(raw_data: str) -> str:
+    """Strip non-alphanumeric chars from user chat buffer."""
+    return ''.join(c for c in raw_data if c.isalnum())
+
+def check_mana_level(current: float, max_cap: float) -> float:
+    """Force resource values into standard floating ranges."""
+    return max(0.0, min(current, max_cap))
