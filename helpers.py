@@ -1,36 +1,42 @@
-import functools
+from typing import List, Dict, Union, Any, Optional
 
-def validate_game_input(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        data = args[0] if args else kwargs.get('data')
-        if not isinstance(data, dict):
-            raise ValueError('input must be a dictionary')
-        if 'action' not in data or 'uid' not in data:
-            raise KeyError('missing required protocol keys')
-        return func(*args, **kwargs)
-    return wrapper
+def calculate_loot_drops(rng_seed: int, rarity_weights: Dict[str, float]) -> List[str]:
+    """
+    Chaotic loot generation based on a static seed and normalized weights.
 
-class InputProcessor:
-    def __init__(self):
-        self.state = 'active'
+    Args:
+        rng_seed: A pseudo-random seed for the RNG.
+        rarity_weights: Dictionary mapping loot keys to probability weights.
 
-    @validate_game_input
-    def process_tick(self, data):
-        """Executes logic flow for game events."""
-        action = data['action']
-        uid = data['uid']
-        return f'processed {action} for entity {uid}'
+    Returns:
+        A list of generated loot item keys.
+    """
+    import random
+    random.seed(rng_seed)
+    total_weight = sum(rarity_weights.values())
+    
+    loot_bag: List[str] = []
+    for _ in range(3):
+        roll = random.uniform(0, total_weight)
+        current = 0.0
+        for item, weight in rarity_weights.items():
+            current += weight
+            if roll <= current:
+                loot_bag.append(item)
+                break
+    return loot_bag
 
-def run_loop(input_queue):
-    processor = InputProcessor()
-    for item in input_queue:
-        try:
-            result = processor.process_tick(item)
-            print(f'Log: {result}')
-        except (ValueError, KeyError) as e:
-            print(f'Drop: invalid packet - {e}')
+def normalize_coordinates(pos: tuple[float, float], bounds: tuple[int, int] = (1920, 1080)) -> tuple[float, float]:
+    """
+    Normalizes screen-space coordinates into a percentage-based tuple.
 
-if __name__ == '__main__':
-    mock_data = [{'action': 'move', 'uid': 1}, {'malformed': 'data'}]
-    run_loop(mock_data)
+    Args:
+        pos: The current x, y coordinate.
+        bounds: Resolution of the game screen.
+
+    Returns:
+        Tuple of floats ranging from 0.0 to 1.0.
+    """
+    x, y = pos
+    w, h = bounds
+    return (x / w, y / h)
