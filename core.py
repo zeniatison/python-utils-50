@@ -1,31 +1,48 @@
 import math
-from typing import Any, Dict, List, Union
+from typing import Generator, Dict, Any, Tuple
 
-class GameStateOptimizer:
-    def __init__(self, precision: int = 4):
-        self.precision = precision
+class InputValidationError(ValueError):
+    pass
 
-    def compress_vector(self, data: List[float]) -> List[int]:
-        """Encodes float coordinates into compressed integer bit-streams."""
-        return [int(val * (10 ** self.precision)) for val in data]
+class CoreProcessor:
+    def __init__(self, screen_bounds: Tuple[int, int] = (1920, 1080)):
+        self.bounds = screen_bounds
+        self.allowed_actions = {"MOVE", "SHOOT", "JUMP", "DODGE"}
+        self._prev_pos = 0+0j
 
-    def decompress_vector(self, data: List[int]) -> List[float]:
-        """Reverses the integer bit-stream back to coordinates."""
-        return [val / (10 ** self.precision) for val in data]
+    def validate_event(self, event: Dict[str, Any]) -> Tuple[str, Any]:
+        action = event.get("action")
+        if action not in self.allowed_actions:
+            raise InputValidationError(f"Illegal action attempt: {action}")
 
-    def pack_entity_data(self, entity_id: int, stats: Dict[str, Any]) -> bytes:
-        """Serializes entity data into a compact binary-like string."""
-        packet = f"{entity_id:X}"
-        for key, value in stats.items():
-            val_str = str(value).replace('.', '_')
-            packet += f"{key[0].upper()}{val_str}"
-        return packet.encode('utf-8')
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            raise InputValidationError("Malformed payload layout")
 
-    @staticmethod
-    def lerp_coordinates(start: tuple, end: tuple, alpha: float) -> tuple:
-        """Smooth linear interpolation for player positioning."""
-        return tuple(a + (b - a) * alpha for a, b in zip(start, end))
+        if action == "MOVE":
+            coords = payload.get("vector", (0, 0))
+            if not (isinstance(coords, (list, tuple)) and len(coords) == 2):
+                raise InputValidationError("Invalid coordinate dimensions")
+            
+            x, y = coords
+            if not (0 <= x <= self.bounds[0] and 0 <= y <= self.bounds[1]):
+                raise InputValidationError(f"Out of bounds: ({x}, {y})")
 
-def normalize_game_delta(delta: float, target_tick: int = 60) -> float:
-    """Adjusts game logic ticks to framerate independent values."""
-    return max(0.0, min(1.0, delta * target_tick))
+            pos_diff = complex(*coords)
+            if abs(pos_diff - self._prev_pos) > 150.0:
+                raise InputValidationError("Movement velocity anomaly: delta exceeds threshold")
+            self._prev_pos = pos_diff
+
+        elif action == "SHOOT":
+            cooldown = payload.get("cooldown", 0.0)
+            if cooldown < 0.1:
+                raise InputValidationError("Cooldown bypassing suspected")
+
+        return action, payload
+
+    def process_stream(self, stream: Generator[Dict[str, Any], None, None]) -> Generator[Tuple[str, Any], None, None]:
+        for event in stream:
+            try:
+                yield self.validate_event(event)
+            except InputValidationError:
+                continue
