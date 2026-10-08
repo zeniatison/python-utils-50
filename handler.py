@@ -1,54 +1,46 @@
-import math
-import logging
-from typing import Any, Callable, Dict, Tuple
-
-logger = logging.getLogger("gaming_utils")
-
-
-class FaultTolerantState:
-    """Safely handles boundary glitches, NaNs, and physics edge cases in entity state updates."""
-
-    def __init__(self, bounds: Dict[str, Tuple[float, float]] = None):
-        self.bounds = bounds or {
-            "health": (0.0, 100000.0),
-            "mana": (0.0, 50000.0),
-            "pos_x": (-9999.0, 9999.0),
-            "pos_y": (-9999.0, 9999.0),
-        }
-
-    def sanitize_value(self, key: str, val: Any) -> float:
-        try:
-            num = float(val)
-            if math.isnan(num) or math.isinf(num):
-                logger.warning(f"Sanitizing non-finite value '{val}' for {key}")
-                return self.bounds.get(key, (0.0, 0.0))[0]
-
-            if key in self.bounds:
-                min_v, max_v = self.bounds[key]
-                return max(min_v, min(num, max_v))
-            return num
-        except (TypeError, ValueError) as err:
-            logger.error(f"Invalid state mutation for {key}: {err}")
-            return self.bounds.get(key, (0.0, 0.0))[0]
-
-    def safe_mutate(self, state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
-        """Applies state updates while intercepting underflow and NaN artifacts."""
-        for key, raw_val in updates.items():
-            if isinstance(raw_val, (int, float, str)):
-                state[key] = self.sanitize_value(key, raw_val)
-            else:
-                state[key] = raw_val
-        return state
+import time
+import random
+import functools
+from typing import Callable, Any, Type, Tuple
 
 
-def edge_case_shield(default_return: Any = None):
-    """Decorator catching frame computation panics and returning safe default."""
-    def decorator(func: Callable):
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except (ZeroDivisionError, OverflowError, KeyError, ValueError) as e:
-                logger.warning(f"Shielded panic in {func.__name__}: {e}")
-                return default_return
+class ServerUnreachableError(Exception):
+    """Raised when a game server connection fails after all retry attempts."""
+    pass
+
+
+def respawn_retry(
+    max_lives: int = 3,
+    base_cooldown: float = 0.5,
+    max_cooldown: float = 8.0,
+    rng_jitter: bool = True,
+    catch_exceptions: Tuple[Type[Exception], ...] = (ConnectionError, TimeoutError, OSError)
+) -> Callable:
+    """Decorator for game network calls that retries on drop with exponential backoff and RNG luck."""
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            attempts = 0
+            while attempts < max_lives:
+                try:
+                    return func(*args, **kwargs)
+                except catch_exceptions as exc:
+                    attempts += 1
+                    if attempts >= max_lives:
+                        raise ServerUnreachableError(
+                            f"Connection wiped after {attempts} attempts. Last error: {exc}"
+                        ) from exc
+
+                    backoff = min(base_cooldown * (2 ** (attempts - 1)), max_cooldown)
+                    jitter = random.uniform(0.75, 1.25) if rng_jitter else 1.0
+                    time.sleep(backoff * jitter)
         return wrapper
     return decorator
+
+
+@respawn_retry(max_lives=4, base_cooldown=0.2)
+def fetch_matchmaking_lobby(region: str) -> dict:
+    """Simulates fetching lobby status over unstable network socket."""
+    if random.random() > 0.3:
+        raise ConnectionError(f"Packet drop on region cluster '{region}'")
+    return {"region": region, "players_online": 1337, "status": "ready"}
