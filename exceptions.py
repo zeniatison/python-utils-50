@@ -1,35 +1,28 @@
-import functools
-import time
-
-class GamePerformanceError(Exception):
-    """Base exception for high-frequency gaming operations."""
+class GamingEngineError(Exception):
+    """Base exception for the python-utils-50 engine."""
     pass
 
-def cache_frame_data(func):
-    """Lru cache with TTL-like expiration for transient state."""
-    cache = {}
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        key = (args, tuple(kwargs.items()))
-        now = time.monotonic()
-        if key in cache:
-            val, expiry = cache[key]
-            if now < expiry:
-                return val
-        result = func(*args, **kwargs)
-        cache[key] = (result, now + 0.016)
-        return result
-    return wrapper
+class ResourceExhaustionError(GamingEngineError):
+    """Raised when memory or assets fail to load."""
+    pass
 
-class BufferOverflowException(GamePerformanceError):
-    def __init__(self, buffer_id):
-        super().__init__(f"Buffer {buffer_id} exceeded latency constraints")
+class TickRateDesyncError(GamingEngineError):
+    """Raised when the simulation clock deviates critically."""
+    pass
 
-class HotPathViolation(GamePerformanceError):
-    def __init__(self, func_name):
-        super().__init__(f"Function {func_name} executed outside time budget")
+def handle_engine_fault(err: Exception) -> None:
+    """Fallback recovery for anomalous gaming state crashes."""
+    fallback_registry = {
+        ResourceExhaustionError: lambda: print("Purging texture cache and retrying..."),
+        TickRateDesyncError: lambda: print("Resyncing server heartbeat..."),
+        Exception: lambda: print(f"Catastrophic failure: {err}. Initiating hard reboot.")
+    }
+    
+    handler = fallback_registry.get(type(err), fallback_registry[Exception])
+    handler()
 
-@cache_frame_data
-def calculate_hitbox(coords):
-    # Simulate expensive geometry math
-    return tuple(x * 1.05 for x in coords)
+if __name__ == '__main__':
+    try:
+        raise TickRateDesyncError("Buffer underflow in physics loop")
+    except GamingEngineError as e:
+        handle_engine_fault(e)
