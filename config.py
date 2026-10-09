@@ -1,41 +1,40 @@
-import functools
-import sys
+import json
+import os
+from typing import Any, Dict
 
 class GameConfig:
-    __slots__ = ('_cache', '_data')
+    """Dynamic configuration loader with fallback defaults for game entities."""
+    def __init__(self, filepath: str, defaults: Dict[str, Any]):
+        self.path = filepath
+        self.data = defaults
+        self._load()
 
-    def __init__(self):
-        self._cache = {}
-        self._data = {'fps_cap': 144, 'render_distance': 1000}
+    def _load(self) -> None:
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, 'r') as f:
+                    loaded = json.load(f)
+                    self.data.update(loaded)
+            except (json.JSONDecodeError, IOError):
+                pass
 
-    @staticmethod
-    def fast_memoize(func):
-        cache = {}
-        @functools.wraps(func)
-        def wrapper(*args):
-            if args not in cache:
-                cache[args] = func(*args)
-            return cache[args]
-        return wrapper
+    def get(self, key: str, fallback: Any = None) -> Any:
+        return self.data.get(key, fallback)
 
-    def get_setting(self, key):
-        return self._data.get(key)
+    def __getattr__(self, name: str) -> Any:
+        if name in self.data:
+            return self.data[name]
+        raise AttributeError(f'Config key {name} not found')
 
-    @fast_memoize
-    def calculate_tick_rate(self, multiplier):
-        return self._data['fps_cap'] * multiplier
+    def sync(self) -> None:
+        with open(self.path, 'w') as f:
+            json.dump(self.data, f, indent=4)
 
-    def __getattr__(self, name):
-        if name in self._data:
-            return self._data[name]
-        raise AttributeError(f'Config {name} not found')
-
-    def batch_update(self, **kwargs):
-        for k, v in kwargs.items():
-            self._data[k] = v
-        self.calculate_tick_rate.cache_clear() if hasattr(self.calculate_tick_rate, 'cache_clear') else None
-
-def get_instance():
-    if 'instance' not in sys.modules[__name__].__dict__:
-        sys.modules[__name__].instance = GameConfig()
-    return sys.modules[__name__].instance
+def load_game_settings(path: str) -> GameConfig:
+    defaults = {
+        'fps_cap': 60,
+        'audio_volume': 0.8,
+        'resolution': [1920, 1080],
+        'fullscreen': True
+    }
+    return GameConfig(path, defaults)
