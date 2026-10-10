@@ -1,48 +1,65 @@
 import math
-from typing import Generator, Dict, Any, Tuple
+from typing import Dict, List, Tuple, Set
 
-class InputValidationError(ValueError):
-    pass
+class FastSpatialGrid:
+    """Bit-shifting spatial partition grid for ultra-fast gaming entity proximity queries."""
+    
+    __slots__ = ('cell_size', 'shift', 'grid')
 
-class CoreProcessor:
-    def __init__(self, screen_bounds: Tuple[int, int] = (1920, 1080)):
-        self.bounds = screen_bounds
-        self.allowed_actions = {"MOVE", "SHOOT", "JUMP", "DODGE"}
-        self._prev_pos = 0+0j
+    def __init__(self, cell_size: int = 64):
+        self.cell_size = cell_size
+        self.shift = cell_size.bit_length() - 1 if (cell_size & (cell_size - 1)) == 0 and cell_size > 0 else None
+        self.grid: Dict[Tuple[int, int], Set[int]] = {}
 
-    def validate_event(self, event: Dict[str, Any]) -> Tuple[str, Any]:
-        action = event.get("action")
-        if action not in self.allowed_actions:
-            raise InputValidationError(f"Illegal action attempt: {action}")
+    def _hash_coords(self, x: float, y: float) -> Tuple[int, int]:
+        if self.shift:
+            return (int(x) >> self.shift, int(y) >> self.shift)
+        return (int(x) // self.cell_size, int(y) // self.cell_size)
 
-        payload = event.get("payload")
-        if not isinstance(payload, dict):
-            raise InputValidationError("Malformed payload layout")
+    def clear(self) -> None:
+        self.grid.clear()
 
-        if action == "MOVE":
-            coords = payload.get("vector", (0, 0))
-            if not (isinstance(coords, (list, tuple)) and len(coords) == 2):
-                raise InputValidationError("Invalid coordinate dimensions")
-            
-            x, y = coords
-            if not (0 <= x <= self.bounds[0] and 0 <= y <= self.bounds[1]):
-                raise InputValidationError(f"Out of bounds: ({x}, {y})")
+    def insert(self, entity_id: int, x: float, y: float) -> None:
+        cell = self._hash_coords(x, y)
+        if cell not in self.grid:
+            self.grid[cell] = set()
+        self.grid[cell].add(entity_id)
 
-            pos_diff = complex(*coords)
-            if abs(pos_diff - self._prev_pos) > 150.0:
-                raise InputValidationError("Movement velocity anomaly: delta exceeds threshold")
-            self._prev_pos = pos_diff
+    def get_nearby_entities(self, x: float, y: float, radius: float) -> List[int]:
+        cx, cy = self._hash_coords(x, y)
+        r_cells = math.ceil(radius / self.cell_size)
+        
+        nearby = []
+        for dx in range(-r_cells, r_cells + 1):
+            for dy in range(-r_cells, r_cells + 1):
+                cell = (cx + dx, cy + dy)
+                if cell in self.grid:
+                    nearby.extend(self.grid[cell])
+        return nearby
 
-        elif action == "SHOOT":
-            cooldown = payload.get("cooldown", 0.0)
-            if cooldown < 0.1:
-                raise InputValidationError("Cooldown bypassing suspected")
+class GameCoreLoop:
+    """Core engine update tick manager with optimized spatial indexing."""
 
-        return action, payload
+    def __init__(self, cell_size: int = 64):
+        self.spatial_index = FastSpatialGrid(cell_size)
+        self.entities: Dict[int, Tuple[float, float]] = {}
 
-    def process_stream(self, stream: Generator[Dict[str, Any], None, None]) -> Generator[Tuple[str, Any], None, None]:
-        for event in stream:
-            try:
-                yield self.validate_event(event)
-            except InputValidationError:
-                continue
+    def register_entity(self, entity_id: int, x: float, y: float) -> None:
+        self.entities[entity_id] = (x, y)
+
+    def update_frame(self) -> None:
+        self.spatial_index.clear()
+        for eid, (x, y) in self.entities.items():
+            self.spatial_index.insert(eid, x, y)
+
+    def find_targets_in_range(self, x: float, y: float, max_dist: float) -> List[int]:
+        candidates = self.spatial_index.get_nearby_entities(x, y, max_dist)
+        max_dist_sq = max_dist * max_dist
+        
+        valid_targets = []
+        for eid in candidates:
+            ex, ey = self.entities[eid]
+            dx, dy = ex - x, ey - y
+            if dx * dx + dy * dy <= max_dist_sq:
+                valid_targets.append(eid)
+        return valid_targets
