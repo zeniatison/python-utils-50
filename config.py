@@ -1,40 +1,37 @@
-import json
 import os
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Dict, Any
 
+@dataclass(frozen=True)
 class GameConfig:
-    """Dynamic configuration loader with fallback defaults for game entities."""
-    def __init__(self, filepath: str, defaults: Dict[str, Any]):
-        self.path = filepath
-        self.data = defaults
-        self._load()
+    render_mode: str = 'opengl'
+    fps_cap: int = 60
+    assets_path: str = './assets'
+    debug_mode: bool = False
+    _registry: Dict[str, Any] = field(default_factory=dict)
 
-    def _load(self) -> None:
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, 'r') as f:
-                    loaded = json.load(f)
-                    self.data.update(loaded)
-            except (json.JSONDecodeError, IOError):
-                pass
+    def __post_init__(self):
+        object.__setattr__(self, '_registry', {
+            'GRAVITY': -9.81,
+            'COLLISION_THRESHOLD': 0.05,
+            'NET_SYNC_INTERVAL': 0.1
+        })
 
-    def get(self, key: str, fallback: Any = None) -> Any:
-        return self.data.get(key, fallback)
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        return self._registry.get(key, default)
 
-    def __getattr__(self, name: str) -> Any:
-        if name in self.data:
-            return self.data[name]
-        raise AttributeError(f'Config key {name} not found')
-
-    def sync(self) -> None:
-        with open(self.path, 'w') as f:
-            json.dump(self.data, f, indent=4)
-
-def load_game_settings(path: str) -> GameConfig:
-    defaults = {
-        'fps_cap': 60,
-        'audio_volume': 0.8,
-        'resolution': [1920, 1080],
-        'fullscreen': True
+def load_environment_overrides(config: GameConfig) -> GameConfig:
+    # Patching config values from environment variables if present
+    env_mapping = {
+        'GAME_FPS': 'fps_cap',
+        'GAME_DEBUG': 'debug_mode'
     }
-    return GameConfig(path, defaults)
+    data = config.__dict__.copy()
+    for env_key, attr_name in env_mapping.items():
+        val = os.getenv(env_key)
+        if val is not None:
+            data[attr_name] = type(getattr(config, attr_name))(val)
+    return GameConfig(**data)
+
+def get_default_config() -> GameConfig:
+    return load_environment_overrides(GameConfig())
