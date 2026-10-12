@@ -1,37 +1,31 @@
 import os
-from dataclasses import dataclass, field
 from typing import Dict, Any
 
-@dataclass(frozen=True)
 class GameConfig:
-    render_mode: str = 'opengl'
-    fps_cap: int = 60
-    assets_path: str = './assets'
-    debug_mode: bool = False
-    _registry: Dict[str, Any] = field(default_factory=dict)
+    _storage: Dict[str, Any] = {}
 
-    def __post_init__(self):
-        object.__setattr__(self, '_registry', {
-            'GRAVITY': -9.81,
-            'COLLISION_THRESHOLD': 0.05,
-            'NET_SYNC_INTERVAL': 0.1
-        })
+    def __init__(self, env: str = "development"):
+        self.env = env
+        self.refresh()
 
-    def get_setting(self, key: str, default: Any = None) -> Any:
-        return self._registry.get(key, default)
+    def refresh(self) -> None:
+        self._storage = {
+            "debug": self.env == "development",
+            "tick_rate": 60 if self.env == "production" else 30,
+            "assets_path": os.getenv("ASSET_DIR", "./assets"),
+            "max_players": int(os.getenv("MAX_PLAYERS", "32"))
+        }
 
-def load_environment_overrides(config: GameConfig) -> GameConfig:
-    # Patching config values from environment variables if present
-    env_mapping = {
-        'GAME_FPS': 'fps_cap',
-        'GAME_DEBUG': 'debug_mode'
-    }
-    data = config.__dict__.copy()
-    for env_key, attr_name in env_mapping.items():
-        val = os.getenv(env_key)
-        if val is not None:
-            data[attr_name] = type(getattr(config, attr_name))(val)
-    return GameConfig(**data)
+    def __getattr__(self, name: str) -> Any:
+        if name not in self._storage:
+            raise AttributeError(f"Config property '{name}' missing")
+        return self._storage[name]
 
-def get_default_config() -> GameConfig:
-    return load_environment_overrides(GameConfig())
+    def __getitem__(self, key: str) -> Any:
+        return self._storage.get(key)
+
+    def __repr__(self) -> str:
+        return f"<GameConfig env={self.env} stats={self._storage}>"
+
+def get_global_config() -> GameConfig:
+    return GameConfig(os.getenv("GAME_ENV", "development"))
