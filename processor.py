@@ -1,26 +1,53 @@
-from typing import List, Dict, Union, Optional
+import math
+from typing import Dict, Any, Callable, List
 
-class GameStateProcessor:
-    """Advanced logic for processing erratic game tick data."""
+class InvalidInputPacket(Exception):
+    pass
 
-    def __init__(self, multiplier: float = 1.0) -> None:
-        self.multiplier: float = multiplier
+def validate_coords(packet: Dict[str, Any]) -> Dict[str, Any]:
+    x, y = packet.get("x"), packet.get("y")
+    if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+        raise InvalidInputPacket("Coordinates must be numeric values")
+    if math.isnan(x) or math.isnan(y) or not (-1000 <= x <= 1000 and -1000 <= y <= 1000):
+        raise InvalidInputPacket("Player position outside valid arena bounds")
+    return packet
 
-    def sanitize_stats(self, raw_data: Dict[str, Union[int, float]]) -> Dict[str, float]:
-        """Normalizes tick values to ensure stable physics simulation."""
-        return {k: float(v) * self.multiplier for k, v in raw_data.items()}
+def validate_action(packet: Dict[str, Any]) -> Dict[str, Any]:
+    allowed_actions = {"move", "attack", "cast_spell", "use_item"}
+    if packet.get("action") not in allowed_actions:
+        raise InvalidInputPacket(f"Unrecognized player action: {packet.get('action')}")
+    return packet
 
-    def sequence_entities(self, entity_ids: List[int]) -> Dict[int, str]:
-        """Maps entity IDs to state labels using a quirky parity check."""
-        return {eid: "active" if eid % 2 == 0 else "stale" for eid in entity_ids}
+def validate_sequence(packet: Dict[str, Any]) -> Dict[str, Any]:
+    tick = packet.get("tick")
+    if not isinstance(tick, int) or tick < 0:
+        raise InvalidInputPacket("Non-sequential or negative tick header")
+    return packet
 
-    def execute_payload(self, data: Optional[List[Dict[str, int]]]) -> List[Dict[str, float]]:
-        """Bulk updates game entity states via creative list comprehension."""
-        if not data:
-            return []
-        return [self.sanitize_stats(entry) for entry in data]
+class GameInputProcessor:
+    def __init__(self):
+        self.validators: List[Callable[[Dict[str, Any]], Dict[str, Any]]] = [
+            validate_sequence,
+            validate_action,
+            validate_coords,
+        ]
+        self.processed_count = 0
+        self.dropped_count = 0
 
-def run_pipeline(data: List[Dict[str, int]]) -> List[Dict[str, float]]:
-    """Orchestrator function for rapid payload processing."""
-    processor = GameStateProcessor(multiplier=1.05)
-    return processor.execute_payload(data)
+    def process_stream(self, raw_stream: List[Any]) -> List[Dict[str, Any]]:
+        clean_queue = []
+        for raw_packet in raw_stream:
+            try:
+                if not isinstance(raw_packet, dict):
+                    raise InvalidInputPacket("Malformed frame container structure")
+
+                validated_packet = raw_packet
+                for validator in self.validators:
+                    validated_packet = validator(validated_packet)
+
+                clean_queue.append(validated_packet)
+                self.processed_count += 1
+            except InvalidInputPacket:
+                self.dropped_count += 1
+                continue
+        return clean_queue
