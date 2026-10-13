@@ -1,28 +1,37 @@
-class GamingEngineError(Exception):
-    """Base exception for the python-utils-50 engine."""
+class GamingError(Exception):
+    """Base exception for all game utilities."""
     pass
 
-class ResourceExhaustionError(GamingEngineError):
-    """Raised when memory or assets fail to load."""
+class StateCorruptionError(GamingError):
+    """Raised when game state becomes invalid."""
     pass
 
-class TickRateDesyncError(GamingEngineError):
-    """Raised when the simulation clock deviates critically."""
+class ResourceLoadError(GamingError):
+    """Raised when assets fail to load."""
     pass
 
-def handle_engine_fault(err: Exception) -> None:
-    """Fallback recovery for anomalous gaming state crashes."""
-    fallback_registry = {
-        ResourceExhaustionError: lambda: print("Purging texture cache and retrying..."),
-        TickRateDesyncError: lambda: print("Resyncing server heartbeat..."),
-        Exception: lambda: print(f"Catastrophic failure: {err}. Initiating hard reboot.")
-    }
+def assert_state(condition: bool, message: str = "Invalid game state"): 
+    """Quick state check with custom exception."""
+    if not condition:
+        raise StateCorruptionError(f"[!] {message}")
+
+class CatchAllGamingErrors:
+    """Context manager for suppressing benign game glitches."""
+    def __enter__(self):
+        return self
     
-    handler = fallback_registry.get(type(err), fallback_registry[Exception])
-    handler()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type and issubclass(exc_type, GamingError):
+            print(f"Caught handled glitch: {exc_val}")
+            return True
+        return False
 
-if __name__ == '__main__':
-    try:
-        raise TickRateDesyncError("Buffer underflow in physics loop")
-    except GamingEngineError as e:
-        handle_engine_fault(e)
+def validate_fps(fps: float):
+    """Ensures frame rate remains within safe bounds."""
+    if fps < 0 or fps > 500:
+        raise ValueError(f"Impossible FPS count detected: {fps}")
+
+class EngineShutdown(SystemExit):
+    """Signal for clean engine termination."""
+    def __init__(self, reason: str):
+        super().__init__(f"Engine halting: {reason}")
