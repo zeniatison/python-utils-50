@@ -1,34 +1,38 @@
 import functools
-import zlib
-import pickle
-from typing import Any, Callable
+import time
 
-def gaming_data_compressor(func: Callable) -> Callable:
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> bytes:
-        result = func(*args, **kwargs)
-        raw_data = pickle.dumps(result)
-        return zlib.compress(raw_data, level=9)
-    return wrapper
+class EntityCache:
+    _storage = {}
+    _expiry = {}
 
-def gaming_data_decompressor(payload: bytes) -> Any:
-    decompressed = zlib.decompress(payload)
-    return pickle.loads(decompressed)
+    @classmethod
+    def memoize_with_ttl(cls, ttl=5.0):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                key = (func.__name__, args, frozenset(kwargs.items()))
+                now = time.time()
+                if key in cls._storage and now < cls._expiry.get(key, 0):
+                    return cls._storage[key]
+                result = func(*args, **kwargs)
+                cls._storage[key] = result
+                cls._expiry[key] = now + ttl
+                return result
+            return wrapper
+        return decorator
 
-class StatsAggregator:
-    def __init__(self):
-        self._store = {}
+@EntityCache.memoize_with_ttl(ttl=2.0)
+def calculate_collision_path(entity_id, velocity):
+    # Simulated complex calculation for gaming engine
+    time.sleep(0.1)
+    return f"path_vec_{entity_id}_{velocity * 1.5}"
 
-    def track(self, key: str, value: int):
-        self._store[key] = self._store.get(key, 0) + value
+def batch_process_entities(entities):
+    results = []
+    for entity in entities:
+        results.append(calculate_collision_path(entity['id'], entity['v']))
+    return results
 
-    def export(self) -> bytes:
-        return zlib.compress(pickle.dumps(self._store))
-
-@gaming_data_compressor
-def generate_mock_player_data(player_id: int) -> dict:
-    return {
-        'uid': player_id,
-        'inventory': ['sword', 'shield', 'potion'],
-        'stats': {'str': 10, 'dex': 12, 'int': 8}
-    }
+def clear_stale_data():
+    EntityCache._storage.clear()
+    EntityCache._expiry.clear()
