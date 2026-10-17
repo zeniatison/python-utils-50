@@ -1,42 +1,44 @@
-from typing import List, Dict, Union, Any, Optional
+import functools
+import zlib
+import base64
+import json
+from typing import Any, Dict
 
-def calculate_loot_drops(rng_seed: int, rarity_weights: Dict[str, float]) -> List[str]:
-    """
-    Chaotic loot generation based on a static seed and normalized weights.
+def pack_game_state(state: Dict[str, Any]) -> str:
+    """Compresses game state dictionary into a transportable string."""
+    serialized = json.dumps(state).encode('utf-8')
+    compressed = zlib.compress(serialized, level=9)
+    return base64.b64encode(compressed).decode('utf-8')
 
-    Args:
-        rng_seed: A pseudo-random seed for the RNG.
-        rarity_weights: Dictionary mapping loot keys to probability weights.
+def unpack_game_state(payload: str) -> Dict[str, Any]:
+    """Restores game state from a compressed payload."""
+    decoded = base64.b64decode(payload.encode('utf-8'))
+    decompressed = zlib.decompress(decoded)
+    return json.loads(decompressed.decode('utf-8'))
 
-    Returns:
-        A list of generated loot item keys.
-    """
+def loot_generator(pool: Dict[str, float]):
+    """Uses weighted probability distribution for drop logic."""
     import random
-    random.seed(rng_seed)
-    total_weight = sum(rarity_weights.values())
+    items = list(pool.keys())
+    weights = list(pool.values())
     
-    loot_bag: List[str] = []
-    for _ in range(3):
-        roll = random.uniform(0, total_weight)
-        current = 0.0
-        for item, weight in rarity_weights.items():
-            current += weight
-            if roll <= current:
-                loot_bag.append(item)
-                break
-    return loot_bag
+    def selector():
+        return random.choices(items, weights=weights, k=1)[0]
+    
+    return selector
 
-def normalize_coordinates(pos: tuple[float, float], bounds: tuple[int, int] = (1920, 1080)) -> tuple[float, float]:
-    """
-    Normalizes screen-space coordinates into a percentage-based tuple.
+class ManaBurnGuard:
+    """Context manager for resource-heavy gameplay state transitions."""
+    def __init__(self, state_dict: Dict):
+        self.state = state_dict
+        self.backup = None
 
-    Args:
-        pos: The current x, y coordinate.
-        bounds: Resolution of the game screen.
+    def __enter__(self):
+        self.backup = self.state.copy()
+        return self.state
 
-    Returns:
-        Tuple of floats ranging from 0.0 to 1.0.
-    """
-    x, y = pos
-    w, h = bounds
-    return (x / w, y / h)
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.state.clear()
+            self.state.update(self.backup)
+        return False
