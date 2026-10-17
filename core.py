@@ -1,37 +1,32 @@
-import functools
-import logging
-from typing import Callable, Any
+import time
+import random
+from functools import wraps
 
-class GameEngineCore:
-    def __init__(self, debug: bool = False):
-        self.registry = {}
-        self.debug = debug
-        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
-        self.logger = logging.getLogger("core")
+def gaming_retry(max_attempts=3, backoff_factor=1.5):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            attempts = 0
+            delay = 1.0
+            while attempts < max_attempts:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    attempts += 1
+                    if attempts == max_attempts:
+                        raise e
+                    jitter = random.uniform(0, 0.5)
+                    time.sleep(delay + jitter)
+                    delay *= backoff_factor
+        return wrapper
+    return decorator
 
-    def register_hook(self, name: str):
-        def decorator(func: Callable):
-            self.registry[name] = func
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                self.logger.debug(f"executing {name}")
-                return func(*args, **kwargs)
-            return wrapper
-        return decorator
+@gaming_retry(max_attempts=4)
+def fetch_game_data(endpoint):
+    # Simulated unstable network call
+    if random.random() < 0.7:
+        raise ConnectionError("Server lag spike detected")
+    return {"status": "success", "data": "player_stats"}
 
-    def invoke(self, name: str, *args, **kwargs) -> Any:
-        if name not in self.registry:
-            self.logger.warning(f"no hook found: {name}")
-            return None
-        return self.registry[name](*args, **kwargs)
-
-    def batch_process(self, tasks: list):
-        return [self.invoke(t[0], *t[1]) for t in tasks if isinstance(t, tuple)]
-
-class EventBus(GameEngineCore):
-    def broadcast(self, event_type: str, data: Any):
-        for name, func in self.registry.items():
-            if name.startswith(event_type):
-                func(data)
-
-engine = GameEngineCore(debug=True)
+if __name__ == '__main__':
+    print(fetch_game_data("/api/v1/profile"))
