@@ -1,48 +1,46 @@
 # python-utils-50
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A curated collection of Python utilities optimized for game development, performance profiling, and asset pipeline automation. This library streamlines common boilerplate tasks in Python-based game engines like Godot (via GDScript/Python bridges) or standalone Pygame projects.
 
-Developed by Developer, `python-utils-50` is a lightweight, high-performance toolkit designed to accelerate game development workflows in Python. It provides critical, production-ready utilities for handling 2D grid pathfinding, game loop ticking, and real-time state serialization.
+### Features
+*   **Asset Batch Processor:** Automated resizing and format conversion for texture sprite sheets to minimize memory footprint.
+*   **Performance Profiler Decorators:** Lightweight wrappers to track execution time and memory allocation of tick functions in real-time.
+*   **Vector Math Extensions:** High-performance vector operations for 2D/3D coordinate transformations and interpolation.
+*   **Config Parser:** Simplified JSON/YAML handlers specifically designed for managing game state and player preferences.
 
-## Features
+### Installation
 
-* **Deterministic Game Tick:** A microsecond-accurate game loop manager that prevents physics drift across variable frame rates.
-* **Optimized A\* Pathfinding:** High-performance 2D grid routing designed specifically for real-time NPC pathfinding and collision avoidance.
-* **Binary State Packer:** Fast, zero-overhead serialization utility designed for rapid multiplayer state synchronization over UDP.
-
-## Installation
-
-Install the package directly from PyPI using pip:
+Requires Python 3.8 or higher. Install the package via pip:
 
 ```bash
 pip install python-utils-50
 ```
 
-## Quick Start
+Alternatively, for local development:
 
-Here is a quick example demonstrating how to set up a fixed-timestep game loop and find a path on a grid:
-
-```python
-from python_utils_50.loop import GameLoop
-from python_utils_50.grid import Grid2D
-
-# 1. Initialize a 10x10 game grid and block a coordinate
-grid = Grid2D(width=10, height=10)
-grid.add_obstacle(x=3, y=3)
-
-# 2. Find a path from top-left to bottom-right
-path = grid.find_path(start=(0, 0), target=(9, 9))
-print(f"Optimal NPC Path: {path}")
-
-# 3. Run a locked 60 FPS game loop
-loop = GameLoop(target_fps=60)
-while loop.running:
-    dt = loop.tick()
-    # Your game update and rendering logic goes here
-    # (Example exits immediately for demonstration)
-    break
+```bash
+git clone https://github.com/Developer/python-utils-50.git
+cd python-utils-50
+pip install -e .
 ```
 
-## License
+### Usage Example
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```python
+from pyutils50.profiler import trace_execution
+from pyutils50.math import Vector2D
+
+# Profile your main game loop tick
+@trace_execution(log_threshold=0.016)  # Logs if frame exceeds 16ms
+def update_game_state():
+    pos = Vector2D(10.5, 20.0)
+    velocity = Vector2D(1.2, -0.5)
+    return pos + velocity
+
+update_game_state()
+```
+
+### License
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
