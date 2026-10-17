@@ -1,39 +1,40 @@
 import json
+import os
 from typing import Any, Dict
 
-class GameConfigStore:
-    def __init__(self, storage_path: str = "game_data.json"):
-        self.path = storage_path
-        self._cache = {}
+class ConfigLoader:
+    def __init__(self, path: str = 'settings.json', defaults: Dict[str, Any] = None):
+        self.path = path
+        self.defaults = defaults or {}
+        self.settings = self._load()
 
-    def __getitem__(self, key: str) -> Any:
-        return self._cache.get(key)
+    def _load(self) -> Dict[str, Any]:
+        if not os.path.exists(self.path):
+            self._save(self.defaults)
+            return self.defaults
+        with open(self.path, 'r') as f:
+            return {**self.defaults, **json.load(f)}
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._cache[key] = value
-        self.sync()
+    def _save(self, data: Dict[str, Any]) -> None:
+        with open(self.path, 'w') as f:
+            json.dump(data, f, indent=4)
 
-    def sync(self) -> None:
-        try:
-            with open(self.path, 'w') as f:
-                json.dump(self._cache, f, indent=4)
-        except IOError as e:
-            print(f"Critical failure writing to disk: {e}")
+    def get(self, key: str, fallback: Any = None) -> Any:
+        return self.settings.get(key, fallback)
 
-    def load(self) -> None:
-        try:
-            with open(self.path, 'r') as f:
-                self._cache = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            self._cache = {}
+    def update(self, key: str, value: Any) -> None:
+        self.settings[key] = value
+        self._save(self.settings)
 
-    def get_player_stat(self, stat_name: str, default: int = 0) -> int:
-        return int(self._cache.get("stats", {}).get(stat_name, default))
+    def __getitem__(self, item: str) -> Any:
+        return self.settings[item]
 
-    def update_stat(self, stat_name: str, value: int) -> None:
-        if "stats" not in self._cache:
-            self._cache["stats"] = {}
-        self._cache["stats"][stat_name] = value
-        self.sync()
-
-config_handler = GameConfigStore()
+# Gaming-specific default configuration generator
+def get_default_gaming_config() -> Dict[str, Any]:
+    return {
+        'resolution': [1920, 1080],
+        'vsync': True,
+        'fov': 90,
+        'sensitivity': 1.5,
+        'audio_master': 0.8
+    }
