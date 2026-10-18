@@ -1,44 +1,37 @@
-import functools
-import zlib
-import base64
-import json
-from typing import Any, Dict
+import random
+import time
+from typing import Any, Callable, TypeVar, List
 
-def pack_game_state(state: Dict[str, Any]) -> str:
-    """Compresses game state dictionary into a transportable string."""
-    serialized = json.dumps(state).encode('utf-8')
-    compressed = zlib.compress(serialized, level=9)
-    return base64.b64encode(compressed).decode('utf-8')
+T = TypeVar('T')
 
-def unpack_game_state(payload: str) -> Dict[str, Any]:
-    """Restores game state from a compressed payload."""
-    decoded = base64.b64decode(payload.encode('utf-8'))
-    decompressed = zlib.decompress(decoded)
-    return json.loads(decompressed.decode('utf-8'))
+def roll_dice(sides: int = 6) -> int:
+    """Simulates a fair dice roll with extra entropy."""
+    random.seed(time.time_ns())
+    return random.randint(1, sides)
 
-def loot_generator(pool: Dict[str, float]):
-    """Uses weighted probability distribution for drop logic."""
-    import random
-    items = list(pool.keys())
-    weights = list(pool.values())
-    
-    def selector():
-        return random.choices(items, weights=weights, k=1)[0]
-    
-    return selector
+def throttle_calls(interval: float) -> Callable:
+    """Decorator to prevent spamming game engine loops."""
+    def decorator(func: Callable) -> Callable:
+        last_called = [0.0]
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            now = time.monotonic()
+            if now - last_called[0] >= interval:
+                last_called[0] = now
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
-class ManaBurnGuard:
-    """Context manager for resource-heavy gameplay state transitions."""
-    def __init__(self, state_dict: Dict):
-        self.state = state_dict
-        self.backup = None
+def batch_process(items: List[T], chunk_size: int = 10) -> List[List[T]]:
+    """Chunking logic for entity updates."""
+    return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
-    def __enter__(self):
-        self.backup = self.state.copy()
-        return self.state
+def normalize_vector(vec: tuple[float, float]) -> tuple[float, float]:
+    """2D vector normalization for player movement."""
+    magnitude = (vec[0]**2 + vec[1]**2) ** 0.5
+    if magnitude == 0:
+        return (0.0, 0.0)
+    return (vec[0] / magnitude, vec[1] / magnitude)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self.state.clear()
-            self.state.update(self.backup)
-        return False
+def coin_flip(chance: float = 0.5) -> bool:
+    """Weighted boolean decision for loot drops."""
+    return random.random() < chance
