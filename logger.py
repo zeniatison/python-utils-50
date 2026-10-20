@@ -1,33 +1,42 @@
+import datetime
 import sys
-import logging
 from typing import Any
 
-class GamingLogger:
-    def __init__(self, name: str = 'nexus_log'):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler(sys.stdout)
-        self.logger.addHandler(handler)
+class GameLogger:
+    COLORS = {
+        "DEBUG": "\033[94m",
+        "INFO": "\033[92m",
+        "WARN": "\033[93m",
+        "ERROR": "\033[91m",
+        "RESET": "\033[0m"
+    }
 
-    def safe_log(self, data: Any) -> None:
-        try:
-            if not isinstance(data, (str, int, float, dict, list)):
-                raise ValueError(f"Unsupported game state type: {type(data).__name__}")
-            self.logger.info(f"[GAME_STATE]: {data}")
-        except (ValueError, TypeError) as e:
-            self.logger.error(f"[CRITICAL_FAIL]: {e}")
-        except Exception as e:
-            self.logger.critical(f"[UNKNOWN_VOID]: {str(e)[:50]}")
+    def __init__(self, prefix: str = "[GAME-ENGINE]"):
+        self.prefix = prefix
 
-    def parse_event(self, event_data: dict) -> None:
-        """Graceful recovery for malformed game packets."""
-        try:
-            player_id = event_data.get('id', 'unknown')
-            coords = event_data.get('coords', [0, 0])
-            if len(coords) != 2:
-                raise IndexError("Malformed spatial coordinates array")
-            self.logger.info(f"Player {player_id} moved to {coords}")
-        except Exception:
-            self.logger.warning("Packet corruption: event skipped")
+    def _log(self, level: str, msg: Any) -> None:
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        color = self.COLORS.get(level, "")
+        reset = self.COLORS["RESET"]
+        print(f"{timestamp} {color}{level:5}{reset} {self.prefix} {msg}", file=sys.stdout)
 
-game_logger = GamingLogger()
+    def debug(self, msg: Any) -> None:
+        self._log("DEBUG", msg)
+
+    def info(self, msg: Any) -> None:
+        self._log("INFO", msg)
+
+    def warn(self, msg: Any) -> None:
+        self._log("WARN", msg)
+
+    def error(self, msg: Any) -> None:
+        self._log("ERROR", msg)
+
+    @staticmethod
+    def silent_mode(active: bool = True) -> None:
+        if active:
+            sys.stdout = open("null.log", "w")
+        else:
+            sys.stdout = sys.__stdout__
+
+engine_logger = GameLogger()
