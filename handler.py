@@ -1,50 +1,35 @@
-import time
-import random
-from functools import wraps
+from typing import Dict, Any, Callable, Union, Optional
 
-def loot_generator(rarity_table: dict):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            roll = random.random()
-            cumulative = 0
-            for item, chance in rarity_table.items():
-                cumulative += chance
-                if roll <= cumulative:
-                    return item
-            return 'common_junk'
-        return wrapper
-    return decorator
+class GameActionHandler:
+    """
+    Orchestrates player-input routing via a registry of callback functions.
+    Uses dynamic binding to keep the game loop lean.
+    """
+    def __init__(self) -> None:
+        self._registry: Dict[str, Callable[[Any], None]] = {}
 
-def entity_serializer(obj):
-    return {k: v for k, v in vars(obj).items() if not k.startswith('_')}
+    def register_command(self, command: str, callback: Callable[[Any], None]) -> None:
+        """Bind an input string to an executable payload function."""
+        self._registry[command] = callback
 
-def frame_rate_throttle(fps=60):
-    target = 1.0 / fps
-    last_time = [time.time()]
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            elapsed = time.time() - last_time[0]
-            if elapsed < target:
-                time.sleep(target - elapsed)
-            result = func(*args, **kwargs)
-            last_time[0] = time.time()
-            return result
-        return wrapper
-    return decorator
+    def execute(self, command: str, data: Optional[Any] = None) -> Union[bool, str]:
+        """
+        Attempt to fire a command; returns success status or debug string.
+        Uses a gentle fallback mechanism for unregistered inputs.
+        """
+        if command not in self._registry:
+            return f"unknown action: {command}"
+        
+        try:
+            self._registry[command](data)
+            return True
+        except Exception as e:
+            return f"execution fault in {command}: {str(e)}"
 
-def batch_process(data, chunk_size=10):
-    for i in range(0, len(data), chunk_size):
-        yield data[i:i + chunk_size]
+    def __getitem__(self, key: str) -> Callable[[Any], None]:
+        """Access the internal command map directly via subscription."""
+        return self._registry[key]
 
-class GameStateManager:
-    def __init__(self):
-        self.registry = {}
-
-    def track(self, key, value):
-        self.registry[key] = {'val': value, 'ts': time.time()}
-
-    def cleanup(self, max_age):
-        now = time.time()
-        self.registry = {k: v for k, v in self.registry.items() if now - v['ts'] < max_age}
+    def __repr__(self) -> str:
+        """Summary of currently active input mappings."""
+        return f"<GameActionHandler with {len(self._registry)} mapped commands>"
