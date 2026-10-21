@@ -1,42 +1,35 @@
-import datetime
 import sys
-from typing import Any
+import traceback
+import logging
 
 class GameLogger:
-    COLORS = {
-        "DEBUG": "\033[94m",
-        "INFO": "\033[92m",
-        "WARN": "\033[93m",
-        "ERROR": "\033[91m",
-        "RESET": "\033[0m"
-    }
+    def __init__(self, name: str = 'GamerCore'):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
 
-    def __init__(self, prefix: str = "[GAME-ENGINE]"):
-        self.prefix = prefix
+    def intercept(self, func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except (ZeroDivisionError, TypeError, ValueError) as e:
+                self.log_quirk(e, func.__name__)
+                return None
+            except Exception as e:
+                self.log_catastrophe(e)
+                raise SystemExit('Game state corrupted')
+        return wrapper
 
-    def _log(self, level: str, msg: Any) -> None:
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        color = self.COLORS.get(level, "")
-        reset = self.COLORS["RESET"]
-        print(f"{timestamp} {color}{level:5}{reset} {self.prefix} {msg}", file=sys.stdout)
+    def log_quirk(self, error, origin):
+        msg = f'[QUIRK IN {origin.upper()}]: {type(error).__name__} -> {str(error)}'
+        print(f'\033[93m{msg}\033[0m', file=sys.stderr)
 
-    def debug(self, msg: Any) -> None:
-        self._log("DEBUG", msg)
-
-    def info(self, msg: Any) -> None:
-        self._log("INFO", msg)
-
-    def warn(self, msg: Any) -> None:
-        self._log("WARN", msg)
-
-    def error(self, msg: Any) -> None:
-        self._log("ERROR", msg)
+    def log_catastrophe(self, error):
+        exc_type, _, exc_tb = sys.exc_info()
+        fname = traceback.extract_tb(exc_tb)[-1].filename
+        line = traceback.extract_tb(exc_tb)[-1].lineno
+        print(f'\033[91mFATAL: {error} at {fname}:{line}\033[0m', file=sys.stderr)
 
     @staticmethod
-    def silent_mode(active: bool = True) -> None:
-        if active:
-            sys.stdout = open("null.log", "w")
-        else:
-            sys.stdout = sys.__stdout__
-
-engine_logger = GameLogger()
+    def panic(reason: str):
+        print(f'\033[41m!!! SYSTEM PANIC: {reason.upper()} !!!\033[0m')
+        sys.exit(1)
