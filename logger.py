@@ -1,35 +1,57 @@
-import sys
-import traceback
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 
-class GameLogger:
-    def __init__(self, name: str = 'GamerCore'):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
 
-    def intercept(self, func):
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except (ZeroDivisionError, TypeError, ValueError) as e:
-                self.log_quirk(e, func.__name__)
-                return None
-            except Exception as e:
-                self.log_catastrophe(e)
-                raise SystemExit('Game state corrupted')
-        return wrapper
+class GameSessionFilter(logging.Filter):
+    """Injects game frame metrics and session IDs into log records."""
 
-    def log_quirk(self, error, origin):
-        msg = f'[QUIRK IN {origin.upper()}]: {type(error).__name__} -> {str(error)}'
-        print(f'\033[93m{msg}\033[0m', file=sys.stderr)
+    def __init__(self, session_id: str = "LOBBY"):
+        super().__init__()
+        self.session_id = session_id
+        self.current_frame = 0
 
-    def log_catastrophe(self, error):
-        exc_type, _, exc_tb = sys.exc_info()
-        fname = traceback.extract_tb(exc_tb)[-1].filename
-        line = traceback.extract_tb(exc_tb)[-1].lineno
-        print(f'\033[91mFATAL: {error} at {fname}:{line}\033[0m', file=sys.stderr)
+    def filter(self, record: logging.LogRecord) -> bool:
+        self.current_frame += 1
+        record.session_id = self.session_id
+        record.frame = self.current_frame
+        return True
 
-    @staticmethod
-    def panic(reason: str):
-        print(f'\033[41m!!! SYSTEM PANIC: {reason.upper()} !!!\033[0m')
-        sys.exit(1)
+
+class RotatingGameLogger:
+    """Configures rotating logger handlers tuned for gaming telemetry."""
+
+    def __init__(self, log_dir: str = "logs", max_megabytes: float = 2.0, keep_count: int = 3):
+        self.log_dir = log_dir
+        self.max_bytes = int(max_megabytes * 1024 * 1024)
+        self.keep_count = keep_count
+        self.filter = GameSessionFilter()
+        os.makedirs(self.log_dir, exist_ok=True)
+
+    def build_logger(self, name: str = "gamecore") -> logging.Logger:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.DEBUG)
+        logger.handlers.clear()
+
+        log_path = os.path.join(self.log_dir, f"{name}.log")
+        file_handler = RotatingFileHandler(
+            log_path, maxBytes=self.max_bytes, backupCount=self.keep_count
+        )
+
+        log_format = "[%(asctime)s] [%(session_id)s#f%(frame)06d] [%(levelname)s] %(message)s"
+        formatter = logging.Formatter(log_format)
+        file_handler.setFormatter(formatter)
+
+        logger.addFilter(self.filter)
+        logger.addHandler(file_handler)
+        return logger
+
+    def update_session(self, session_id: str) -> None:
+        self.filter.session_id = session_id
+        self.filter.current_frame = 0
+
+
+def create_rotated_logger(session_name: str = "WORLD_01") -> logging.Logger:
+    factory = RotatingGameLogger(max_megabytes=1.5, keep_count=5)
+    factory.update_session(session_name)
+    return factory.build_logger("game_events")
