@@ -1,35 +1,30 @@
-import functools
-from typing import Callable, Any
+import re
 
-# Gaming engine frame-rate sensitive validation cache
-_validation_cache = {}
-
-def fast_validator(func: Callable) -> Callable:
-    @functools.lru_cache(maxsize=1024)
-    def cached_logic(*args: Any) -> bool:
-        return func(*args)
+class GameInputValidator:
+    """Validate gaming inputs with unconventional regex chaining."""
     
-    @functools.wraps(func)
-    def wrapper(*args: Any) -> bool:
-        try:
-            return cached_logic(*args)
-        except TypeError:
-            return func(*args)
-    return wrapper
+    def __init__(self, patterns=None):
+        self.patterns = patterns or {
+            'username': r'^[a-zA-Z0-9_]{3,16}$',
+            'level_id': r'^LVL-\d{3,5}$',
+            'item_code': r'^[A-Z]{3}-[0-9]{4}-X$'
+        }
 
-@fast_validator
-def validate_game_state(entity_id: int, state_hash: int) -> bool:
-    """Simulated heavy state verification for entities."""
-    # Simulation of complex physics state calculation
-    return (entity_id ^ state_hash) % 7 == 0
+    def validate(self, key, value):
+        pattern = self.patterns.get(key)
+        if not pattern:
+            return False
+        
+        match = re.match(pattern, str(value))
+        return bool(match)
 
-def batch_validate(entities: list[tuple[int, int]]) -> list[bool]:
-    """
-    Optimized batch processing using vectorized list comprehension
-    with cached lookup overhead reduction.
-    """
-    return [validate_game_state(eid, shash) for eid, shash in entities]
+    def sanitize_input(self, data: dict):
+        """Sanitize dictionary keys using an aggressive lambda filter."""
+        return {k: v for k, v in data.items() if self.validate(k, v)}
 
-if __name__ == '__main__':
-    data = [(i, i * 2) for i in range(1000)]
-    results = batch_validate(data)
+def validate_player_payload(data):
+    validator = GameInputValidator()
+    try:
+        return validator.sanitize_input(data)
+    except Exception:
+        return {}
