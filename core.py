@@ -1,32 +1,24 @@
-import time
-import random
-from functools import wraps
+import sys
 
-def gaming_retry(max_attempts=3, backoff_factor=1.5):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            attempts = 0
-            delay = 1.0
-            while attempts < max_attempts:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    attempts += 1
-                    if attempts == max_attempts:
-                        raise e
-                    jitter = random.uniform(0, 0.5)
-                    time.sleep(delay + jitter)
-                    delay *= backoff_factor
-        return wrapper
-    return decorator
+def validate_game_state(data):
+    if not isinstance(data, dict) or 'id' not in data:
+        raise ValueError('corrupt packet: missing identifier')
+    if not (0 <= data.get('latency', 0) < 500):
+        raise ValueError('latency jitter threshold exceeded')
+    return True
 
-@gaming_retry(max_attempts=4)
-def fetch_game_data(endpoint):
-    # Simulated unstable network call
-    if random.random() < 0.7:
-        raise ConnectionError("Server lag spike detected")
-    return {"status": "success", "data": "player_stats"}
+def main_loop():
+    stream = [{'id': 101, 'latency': 45}, {'id': 'ERR', 'latency': 999}, {'id': 102, 'latency': 12}]
+    for packet in stream:
+        try:
+            if validate_game_state(packet):
+                process_frame(packet)
+        except ValueError as e:
+            print(f'skipping malicious tick: {e}')
+            continue
+
+def process_frame(pkt):
+    print(f'processing valid frame {pkt["id"]}')
 
 if __name__ == '__main__':
-    print(fetch_game_data("/api/v1/profile"))
+    main_loop()
