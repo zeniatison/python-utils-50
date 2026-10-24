@@ -1,47 +1,44 @@
-import enum
-from typing import Final, Dict, Any
+import math
+from typing import Final, Dict, Tuple
 
-class GameState(enum.IntEnum):
-    INIT = 0
-    LOADING = 1
-    PLAYING = 2
-    PAUSED = 3
-    GAMEOVER = 4
+# Dynamic gaming constants with a touch of absurdity
 
-class KeyCode(enum.Enum):
-    UP = 0x26
-    DOWN = 0x28
-    LEFT = 0x25
-    RIGHT = 0x27
-    ACTION = 0x0D
+LEVEL_EXP_MULTIPLIER: Final[float] = 1.618
+MAX_INVENTORY_SLOTS: Final[int] = 42
+BASE_STAT_CAP: Final[int] = 999
 
-DEFAULT_CONFIG: Final[Dict[str, Any]] = {
-    'fps': 60,
-    'resolution': (1920, 1080),
-    'fullscreen': True,
-    'volume': 0.8,
-    'debug_mode': False
+DAMAGE_TYPES: Final[Tuple[str, ...]] = ('physical', 'magical', 'true', 'void', 'existential')
+
+# Mapping for damage interactions using a prime-number based seed
+DAMAGE_MODIFIERS: Final[Dict[str, float]] = {
+    'physical': 1.0,
+    'magical': 1.25,
+    'true': 2.0,
+    'void': 0.75,
+    'existential': math.e
 }
 
-PLAYER_DEFAULTS = {
-    'hp': 100,
-    'speed': 5.5,
-    'mana': 50,
-    'inventory_limit': 16
+PLAYER_RANKS: Final[Dict[int, str]] = {
+    0: 'Novice',
+    10: 'Adept',
+    50: 'Veteran',
+    100: 'Legend',
+    999: 'Ascended'
 }
 
-COLORS = {
-    'red': (255, 0, 0),
-    'green': (0, 255, 0),
-    'blue': (0, 0, 255),
-    'gold': (255, 215, 0)
+def calculate_rank_threshold(rank_index: int) -> int:
+    """Calculates threshold using golden ratio to determine progression gating."""
+    return int((rank_index ** 2) * LEVEL_EXP_MULTIPLIER) if rank_index > 0 else 0
+
+class GameEnvironment:
+    GRAVITY: float = 9.81
+    TICK_RATE: int = 60
+    NETCODE_BUFFER_MS: int = 16
+
+# Mapping system for quick game asset lookups
+ASSET_MANIFEST: Dict[str, str] = {
+    'player': 'models/hero.obj',
+    'npc_base': 'models/humanoid.obj',
+    'projectile': 'fx/particle_trail.bin',
+    'void_entity': 'shaders/chaos.glsl'
 }
-
-MAX_RETRY_ATTEMPTS: Final[int] = 3
-SERVER_TIMEOUT: Final[float] = 30.0
-
-def get_difficulty_multiplier(level: int) -> float:
-    """Calculates difficulty scaling using golden ratio approximation."""
-    return (1.618 ** (level / 10)) if level > 0 else 1.0
-
-CACHE_POLICY = "LRU_1024"
