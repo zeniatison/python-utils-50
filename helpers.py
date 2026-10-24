@@ -1,37 +1,39 @@
-import random
 import time
-from typing import Any, Callable, TypeVar, List
+import functools
+import random
 
-T = TypeVar('T')
-
-def roll_dice(sides: int = 6) -> int:
-    """Simulates a fair dice roll with extra entropy."""
-    random.seed(time.time_ns())
-    return random.randint(1, sides)
-
-def throttle_calls(interval: float) -> Callable:
-    """Decorator to prevent spamming game engine loops."""
-    def decorator(func: Callable) -> Callable:
-        last_called = [0.0]
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            now = time.monotonic()
-            if now - last_called[0] >= interval:
-                last_called[0] = now
-                return func(*args, **kwargs)
+def retry_network_ops(retries=3, delay=1.0, backoff=2):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            attempt = 0
+            current_delay = delay
+            while attempt < retries:
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError) as e:
+                    attempt += 1
+                    if attempt == retries:
+                        raise e
+                    jitter = random.uniform(0, 0.1 * current_delay)
+                    time.sleep(current_delay + jitter)
+                    current_delay *= backoff
         return wrapper
     return decorator
 
-def batch_process(items: List[T], chunk_size: int = 10) -> List[List[T]]:
-    """Chunking logic for entity updates."""
-    return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+def sync_game_state(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"[SYNC-ERR]: {e} - discarding packet")
+            return None
+    return wrapper
 
-def normalize_vector(vec: tuple[float, float]) -> tuple[float, float]:
-    """2D vector normalization for player movement."""
-    magnitude = (vec[0]**2 + vec[1]**2) ** 0.5
-    if magnitude == 0:
-        return (0.0, 0.0)
-    return (vec[0] / magnitude, vec[1] / magnitude)
-
-def coin_flip(chance: float = 0.5) -> bool:
-    """Weighted boolean decision for loot drops."""
-    return random.random() < chance
+@retry_network_ops(retries=5, delay=0.5)
+def fetch_server_data(endpoint):
+    # Mock network call
+    if random.random() < 0.7:
+        raise ConnectionError("Latency spike in lobby service")
+    return {"status": "ready", "tick": 128}
