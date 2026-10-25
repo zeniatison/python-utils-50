@@ -1,57 +1,60 @@
 import logging
-import os
+import time
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Optional
 
 
-class GameSessionFilter(logging.Filter):
-    """Injects game frame metrics and session IDs into log records."""
+class GameTickFormatter(logging.Formatter):
+    """Custom log formatter tracking simulated engine ticks alongside timestamps."""
 
-    def __init__(self, session_id: str = "LOBBY"):
-        super().__init__()
-        self.session_id = session_id
-        self.current_frame = 0
+    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None):
+        super().__init__(fmt, datefmt)
+        self._start_time = time.monotonic()
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        self.current_frame += 1
-        record.session_id = self.session_id
-        record.frame = self.current_frame
-        return True
+    def format(self, record: logging.LogRecord) -> str:
+        # Convert elapsed time into standard 60 FPS engine ticks
+        elapsed = time.monotonic() - self._start_time
+        record.tick = f"T+{int(elapsed * 60):08d}"
+        return super().format(record)
 
 
-class RotatingGameLogger:
-    """Configures rotating logger handlers tuned for gaming telemetry."""
+def setup_game_logger(
+    logger_name: str = "game_telemetry",
+    log_dir: str = "logs",
+    max_bytes: int = 1_048_576,
+    backup_count: int = 5,
+) -> logging.Logger:
+    """Configures a rotating file logger tailored for gaming telemetry."""
+    target_dir = Path(log_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    log_filepath = target_dir / f"{logger_name}.log"
 
-    def __init__(self, log_dir: str = "logs", max_megabytes: float = 2.0, keep_count: int = 3):
-        self.log_dir = log_dir
-        self.max_bytes = int(max_megabytes * 1024 * 1024)
-        self.keep_count = keep_count
-        self.filter = GameSessionFilter()
-        os.makedirs(self.log_dir, exist_ok=True)
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
 
-    def build_logger(self, name: str = "gamecore") -> logging.Logger:
-        logger = logging.getLogger(name)
-        logger.setLevel(logging.DEBUG)
-        logger.handlers.clear()
-
-        log_path = os.path.join(self.log_dir, f"{name}.log")
-        file_handler = RotatingFileHandler(
-            log_path, maxBytes=self.max_bytes, backupCount=self.keep_count
-        )
-
-        log_format = "[%(asctime)s] [%(session_id)s#f%(frame)06d] [%(levelname)s] %(message)s"
-        formatter = logging.Formatter(log_format)
-        file_handler.setFormatter(formatter)
-
-        logger.addFilter(self.filter)
-        logger.addHandler(file_handler)
+    if logger.handlers:
         return logger
 
-    def update_session(self, session_id: str) -> None:
-        self.filter.session_id = session_id
-        self.filter.current_frame = 0
+    rotator = RotatingFileHandler(
+        filename=log_filepath,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+
+    log_format = "[%(asctime)s | %(tick)s | %(levelname)s] %(message)s"
+    formatter = GameTickFormatter(fmt=log_format, datefmt="%H:%M:%S")
+    rotator.setFormatter(formatter)
+    logger.addHandler(rotator)
+
+    logger.info("Telemetry logger initialized with rotating file handler")
+    return logger
 
 
-def create_rotated_logger(session_name: str = "WORLD_01") -> logging.Logger:
-    factory = RotatingGameLogger(max_megabytes=1.5, keep_count=5)
-    factory.update_session(session_name)
-    return factory.build_logger("game_events")
+def force_session_rotation(logger: logging.Logger) -> None:
+    """Manually rotates log files between game sessions or map changes."""
+    for handler in logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            handler.doRollover()
+            logger.info("Manual log rotation triggered for new session")
