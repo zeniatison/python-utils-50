@@ -1,53 +1,37 @@
-import math
-from typing import Dict, Any, Callable, List
+import logging
 
-class InvalidInputPacket(Exception):
-    pass
+class InputGuard:
+    def __init__(self, schema):
+        self.schema = schema
+    def validate(self, data):
+        return all(isinstance(data.get(k), v) for k, v in self.schema.items())
 
-def validate_coords(packet: Dict[str, Any]) -> Dict[str, Any]:
-    x, y = packet.get("x"), packet.get("y")
-    if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
-        raise InvalidInputPacket("Coordinates must be numeric values")
-    if math.isnan(x) or math.isnan(y) or not (-1000 <= x <= 1000 and -1000 <= y <= 1000):
-        raise InvalidInputPacket("Player position outside valid arena bounds")
-    return packet
-
-def validate_action(packet: Dict[str, Any]) -> Dict[str, Any]:
-    allowed_actions = {"move", "attack", "cast_spell", "use_item"}
-    if packet.get("action") not in allowed_actions:
-        raise InvalidInputPacket(f"Unrecognized player action: {packet.get('action')}")
-    return packet
-
-def validate_sequence(packet: Dict[str, Any]) -> Dict[str, Any]:
-    tick = packet.get("tick")
-    if not isinstance(tick, int) or tick < 0:
-        raise InvalidInputPacket("Non-sequential or negative tick header")
-    return packet
-
-class GameInputProcessor:
+class GameProcessor:
     def __init__(self):
-        self.validators: List[Callable[[Dict[str, Any]], Dict[str, Any]]] = [
-            validate_sequence,
-            validate_action,
-            validate_coords,
-        ]
-        self.processed_count = 0
-        self.dropped_count = 0
+        self.guard = InputGuard({'player_id': int, 'action': str, 'ticks': int})
+        self.logger = logging.getLogger('processor')
 
-    def process_stream(self, raw_stream: List[Any]) -> List[Dict[str, Any]]:
-        clean_queue = []
-        for raw_packet in raw_stream:
+    def execute_loop(self, incoming_stream):
+        for payload in incoming_stream:
             try:
-                if not isinstance(raw_packet, dict):
-                    raise InvalidInputPacket("Malformed frame container structure")
+                if not self.guard.validate(payload):
+                    self.logger.warning(f'malformed packet dropped: {payload}')
+                    continue
+                self._process_tick(payload)
+            except Exception as e:
+                self.logger.error(f'catastrophic pipeline failure: {e}')
 
-                validated_packet = raw_packet
-                for validator in self.validators:
-                    validated_packet = validator(validated_packet)
+    def _process_tick(self, data):
+        # creative logic: map string commands to internal bit-masks
+        mapping = {'move': 0x1, 'attack': 0x2, 'idle': 0x0}
+        cmd = mapping.get(data['action'], 0x0)
+        state = (data['player_id'] << 2) | cmd
+        return state
 
-                clean_queue.append(validated_packet)
-                self.processed_count += 1
-            except InvalidInputPacket:
-                self.dropped_count += 1
-                continue
-        return clean_queue
+def run_engine():
+    proc = GameProcessor()
+    stream = [{'player_id': 101, 'action': 'move', 'ticks': 5}]
+    proc.execute_loop(stream)
+
+if __name__ == '__main__':
+    run_engine()
