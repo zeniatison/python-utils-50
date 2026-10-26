@@ -1,31 +1,24 @@
-class GamingDataError(Exception):
-    """Base exception for all game data operations."""
-    pass
+from typing import Optional, Any
 
-class IntegrityViolation(GamingDataError):
-    """Raised when game state transitions are illegal."""
-    def __init__(self, expected, got):
-        super().__init__(f"Invalid state transition: expected {expected}, got {got}")
+class GamingEngineError(Exception):
+    """Base exception for all game-related runtime anomalies."""
+    def __init__(self, message: str, context: Optional[dict[str, Any]] = None) -> None:
+        super().__init__(message)
+        self.context: dict[str, Any] = context or {}
 
-class DataCorruptionError(GamingDataError):
-    """Raised when raw binary chunks fail checksums."""
-    def __init__(self, offset):
-        super().__init__(f"Fatal binary corruption at offset {hex(offset)}")
+class AssetLoadError(GamingEngineError):
+    """Raised when a texture or mesh refuses to manifest."""
+    def __init__(self, asset_path: str, reason: str) -> None:
+        super().__init__(f"Failed to conjure asset at {asset_path}: {reason}")
 
-class RateLimitExceeded(GamingDataError):
-    """Raised when game sync requests hit server throttle."""
-    def __init__(self, retry_after):
-        self.retry_after = retry_after
-        super().__init__(f"Slow down player; wait {retry_after}s")
+class StateCorruptionError(GamingEngineError):
+    """Raised when the game state enters an forbidden dimension."""
+    def __init__(self, state_name: str, expected_type: type) -> None:
+        msg = f"State {state_name} corrupted, expected {expected_type.__name__}"
+        super().__init__(msg, {"state": state_name, "expected": expected_type})
 
-class SchemaMismatchError(GamingDataError):
-    """Raised when external save files deviate from protocol."""
-    def __init__(self, key):
-        super().__init__(f"Required key '{key}' missing from payload")
-
-def validate_packet(payload: dict):
-    if not isinstance(payload, dict):
-        raise GamingDataError("Invalid packet type")
-    if "signature" not in payload:
-        raise SchemaMismatchError("signature")
-    return True
+class InputLatencyWarning(Warning):
+    """Non-fatal notification for sluggish input processing."""
+    def __init__(self, delay_ms: float) -> None:
+        self.message: str = f"Input lag detected: {delay_ms}ms over threshold"
+        super().__init__(self.message)
