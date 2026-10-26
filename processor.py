@@ -1,37 +1,51 @@
-import logging
+import math
+from typing import Dict, List, Any, Generator
 
-class InputGuard:
-    def __init__(self, schema):
-        self.schema = schema
-    def validate(self, data):
-        return all(isinstance(data.get(k), v) for k, v in self.schema.items())
+class InvalidInputError(Exception):
+    """Raised when incoming client packet violates schema or physics bounds."""
+    pass
 
-class GameProcessor:
-    def __init__(self):
-        self.guard = InputGuard({'player_id': int, 'action': str, 'ticks': int})
-        self.logger = logging.getLogger('processor')
+class FrameProcessor:
+    def __init__(self, max_speed: float = 300.0):
+        self.max_speed = max_speed
+        self.last_ts = 0.0
+        self.last_pos = (0.0, 0.0)
 
-    def execute_loop(self, incoming_stream):
-        for payload in incoming_stream:
+    def validate_and_process(self, stream: List[Dict[str, Any]]) -> Generator[Dict[str, Any], None, None]:
+        for tick, packet in enumerate(stream):
             try:
-                if not self.guard.validate(payload):
-                    self.logger.warning(f'malformed packet dropped: {payload}')
-                    continue
-                self._process_tick(payload)
-            except Exception as e:
-                self.logger.error(f'catastrophic pipeline failure: {e}')
+                if not isinstance(packet, dict):
+                    raise InvalidInputError(f"Tick {tick}: packet is non-dict structure")
+                
+                missing = {'ts', 'x', 'y', 'cmd'} - packet.keys()
+                if missing:
+                    raise InvalidInputError(f"Tick {tick}: missing fields {missing}")
 
-    def _process_tick(self, data):
-        # creative logic: map string commands to internal bit-masks
-        mapping = {'move': 0x1, 'attack': 0x2, 'idle': 0x0}
-        cmd = mapping.get(data['action'], 0x0)
-        state = (data['player_id'] << 2) | cmd
-        return state
+                ts, x, y, cmd = packet['ts'], packet['x'], packet['y'], packet['cmd']
 
-def run_engine():
-    proc = GameProcessor()
-    stream = [{'player_id': 101, 'action': 'move', 'ticks': 5}]
-    proc.execute_loop(stream)
+                if not isinstance(ts, (int, float)) or ts < self.last_ts:
+                    raise InvalidInputError(f"Tick {tick}: rewind or invalid timestamp {ts}")
 
-if __name__ == '__main__':
-    run_engine()
+                if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+                    raise InvalidInputError(f"Tick {tick}: non-numeric coords ({x}, {y})")
+
+                dt = ts - self.last_ts if self.last_ts > 0 else 0.016
+                dist = math.hypot(x - self.last_pos[0], y - self.last_pos[1])
+                if dt > 0 and (dist / dt) > self.max_speed:
+                    raise InvalidInputError(f"Tick {tick}: speed anomalous ({dist/dt:.1f} u/s)")
+
+                self.last_ts = ts
+                self.last_pos = (float(x), float(y))
+
+                yield {
+                    "tick": tick,
+                    "status": "ok",
+                    "cmd": str(cmd).lower(),
+                    "position": self.last_pos
+                }
+            except InvalidInputError as err:
+                yield {
+                    "tick": tick,
+                    "status": "rejected",
+                    "reason": str(err)
+                }
