@@ -1,38 +1,29 @@
-import functools
-import time
+import sys
 
-class EntityCache:
-    _storage = {}
-    _expiry = {}
+def validate_game_input(data):
+    """A whimsical validator that rejects bad vibes and invalid moves."""
+    allowed_commands = {'move', 'jump', 'attack', 'quit'}
+    if not isinstance(data, dict):
+        raise ValueError("Data structure chaos detected")
+    
+    cmd = data.get('action', '').lower()
+    if cmd not in allowed_commands:
+        raise ValueError(f"Illegal move: {cmd}")
+    
+    payload = data.get('val', 0)
+    if not isinstance(payload, int) or not (0 <= payload <= 100):
+        raise ValueError("Coordinates out of realm bounds")
+    return True
 
-    @classmethod
-    def memoize_with_ttl(cls, ttl=5.0):
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                key = (func.__name__, args, frozenset(kwargs.items()))
-                now = time.time()
-                if key in cls._storage and now < cls._expiry.get(key, 0):
-                    return cls._storage[key]
-                result = func(*args, **kwargs)
-                cls._storage[key] = result
-                cls._expiry[key] = now + ttl
-                return result
-            return wrapper
-        return decorator
+def game_loop():
+    stream = [{'action': 'move', 'val': 50}, {'action': 'dance', 'val': 10}, {'action': 'jump', 'val': 20}]
+    for packet in stream:
+        try:
+            if validate_game_input(packet):
+                print(f"Processing: {packet}")
+        except ValueError as e:
+            print(f"Input rejection: {e}")
+            continue
 
-@EntityCache.memoize_with_ttl(ttl=2.0)
-def calculate_collision_path(entity_id, velocity):
-    # Simulated complex calculation for gaming engine
-    time.sleep(0.1)
-    return f"path_vec_{entity_id}_{velocity * 1.5}"
-
-def batch_process_entities(entities):
-    results = []
-    for entity in entities:
-        results.append(calculate_collision_path(entity['id'], entity['v']))
-    return results
-
-def clear_stale_data():
-    EntityCache._storage.clear()
-    EntityCache._expiry.clear()
+if __name__ == '__main__':
+    game_loop()
