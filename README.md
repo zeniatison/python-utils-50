@@ -1,46 +1,49 @@
 # python-utils-50
 
-A curated collection of Python utilities optimized for game development, performance profiling, and asset pipeline automation. This library streamlines common boilerplate tasks in Python-based game engines like Godot (via GDScript/Python bridges) or standalone Pygame projects.
+A curated collection of high-performance Python utilities designed to streamline game development tasks and server-side automation. This library focuses on low-latency calculations and rapid data integration for game engines and discord-based game servers.
 
-### Features
-*   **Asset Batch Processor:** Automated resizing and format conversion for texture sprite sheets to minimize memory footprint.
-*   **Performance Profiler Decorators:** Lightweight wrappers to track execution time and memory allocation of tick functions in real-time.
-*   **Vector Math Extensions:** High-performance vector operations for 2D/3D coordinate transformations and interpolation.
-*   **Config Parser:** Simplified JSON/YAML handlers specifically designed for managing game state and player preferences.
+## Features
 
-### Installation
+*   **VectorMath Engine:** Optimized 2D/3D coordinate transformations and distance calculations for collision detection.
+*   **Player Profile Serializer:** A robust JSON/Binary schema validator for saving and loading player game states efficiently.
+*   **Packet Buffer Manager:** Handles asynchronous byte stream parsing for custom multiplayer networking protocols.
+*   **Cooldown Manager:** A decorator-based utility to manage player ability refresh rates and prevent action spam.
 
-Requires Python 3.8 or higher. Install the package via pip:
+## Installation
+
+Install the package via pip:
 
 ```bash
 pip install python-utils-50
 ```
 
-Alternatively, for local development:
+For developers requiring bleeding-edge features, clone the repository:
 
 ```bash
 git clone https://github.com/Developer/python-utils-50.git
 cd python-utils-50
-pip install -e .
+pip install -r requirements.txt
 ```
 
-### Usage Example
+## Basic Usage
+
+Quickly implement a cooldown on a game action using the built-in decorator:
 
 ```python
-from pyutils50.profiler import trace_execution
-from pyutils50.math import Vector2D
+from utils_50 import cooldown
 
-# Profile your main game loop tick
-@trace_execution(log_threshold=0.016)  # Logs if frame exceeds 16ms
-def update_game_state():
-    pos = Vector2D(10.5, 20.0)
-    velocity = Vector2D(1.2, -0.5)
-    return pos + velocity
+@cooldown(seconds=5.0)
+def use_health_potion():
+    print("Health potion consumed!")
 
-update_game_state()
+# This will execute on the first call, 
+# and ignore subsequent calls for 5 seconds.
+use_health_potion()
+use_health_potion() 
 ```
 
-### License
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+## License
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
