@@ -1,51 +1,32 @@
-import math
-from typing import Dict, List, Any, Generator
+import functools
+import array
 
-class InvalidInputError(Exception):
-    """Raised when incoming client packet violates schema or physics bounds."""
-    pass
+class EntityProcessor:
+    """Cache-aligned batch processing engine for game entities."""
+    def __init__(self, size=1024):
+        self.size = size
+        # Using array.array for cache-locality instead of list of objects
+        self.position_data = array.array('d', [0.0] * (size * 2))
+        self.velocity_data = array.array('d', [0.0] * (size * 2))
 
-class FrameProcessor:
-    def __init__(self, max_speed: float = 300.0):
-        self.max_speed = max_speed
-        self.last_ts = 0.0
-        self.last_pos = (0.0, 0.0)
+    @functools.lru_cache(maxsize=128)
+    def _get_chunk_range(self, index):
+        return range(index * 16, (index + 1) * 16)
 
-    def validate_and_process(self, stream: List[Dict[str, Any]]) -> Generator[Dict[str, Any], None, None]:
-        for tick, packet in enumerate(stream):
-            try:
-                if not isinstance(packet, dict):
-                    raise InvalidInputError(f"Tick {tick}: packet is non-dict structure")
-                
-                missing = {'ts', 'x', 'y', 'cmd'} - packet.keys()
-                if missing:
-                    raise InvalidInputError(f"Tick {tick}: missing fields {missing}")
+    def update_physics(self, dt):
+        """Vectorized state updates bypassing high-level object overhead."""
+        pos = self.position_data
+        vel = self.velocity_data
+        for i in range(len(pos)):
+            pos[i] += vel[i] * dt
 
-                ts, x, y, cmd = packet['ts'], packet['x'], packet['y'], packet['cmd']
+    def apply_impulse(self, entity_id, dx, dy):
+        base = entity_id * 2
+        self.velocity_data[base] += dx
+        self.velocity_data[base + 1] += dy
 
-                if not isinstance(ts, (int, float)) or ts < self.last_ts:
-                    raise InvalidInputError(f"Tick {tick}: rewind or invalid timestamp {ts}")
-
-                if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
-                    raise InvalidInputError(f"Tick {tick}: non-numeric coords ({x}, {y})")
-
-                dt = ts - self.last_ts if self.last_ts > 0 else 0.016
-                dist = math.hypot(x - self.last_pos[0], y - self.last_pos[1])
-                if dt > 0 and (dist / dt) > self.max_speed:
-                    raise InvalidInputError(f"Tick {tick}: speed anomalous ({dist/dt:.1f} u/s)")
-
-                self.last_ts = ts
-                self.last_pos = (float(x), float(y))
-
-                yield {
-                    "tick": tick,
-                    "status": "ok",
-                    "cmd": str(cmd).lower(),
-                    "position": self.last_pos
-                }
-            except InvalidInputError as err:
-                yield {
-                    "tick": tick,
-                    "status": "rejected",
-                    "reason": str(err)
-                }
+    def get_state_snapshot(self):
+        return {
+            'pos': bytes(self.position_data),
+            'vel': bytes(self.velocity_data)
+        }
