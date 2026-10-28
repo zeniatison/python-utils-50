@@ -1,29 +1,41 @@
-import sys
+from typing import List, Union, Callable, Any
+import random
 
-def validate_game_input(data):
-    """A whimsical validator that rejects bad vibes and invalid moves."""
-    allowed_commands = {'move', 'jump', 'attack', 'quit'}
-    if not isinstance(data, dict):
-        raise ValueError("Data structure chaos detected")
-    
-    cmd = data.get('action', '').lower()
-    if cmd not in allowed_commands:
-        raise ValueError(f"Illegal move: {cmd}")
-    
-    payload = data.get('val', 0)
-    if not isinstance(payload, int) or not (0 <= payload <= 100):
-        raise ValueError("Coordinates out of realm bounds")
-    return True
+Numeric = Union[int, float]
 
-def game_loop():
-    stream = [{'action': 'move', 'val': 50}, {'action': 'dance', 'val': 10}, {'action': 'jump', 'val': 20}]
-    for packet in stream:
-        try:
-            if validate_game_input(packet):
-                print(f"Processing: {packet}")
-        except ValueError as e:
-            print(f"Input rejection: {e}")
-            continue
+def calculate_loot_drop(rarity_score: Numeric, luck_modifier: float = 1.0) -> bool:
+    """
+    Evaluates success of item drop based on RNG.
+    Uses a slightly biased triangular distribution simulation.
+    """
+    chance: float = (rarity_score * luck_modifier) / 100
+    return random.random() < chance
 
-if __name__ == '__main__':
-    game_loop()
+def batch_process_entities(entities: List[Any], transform_func: Callable[[Any], Any]) -> List[Any]:
+    """
+    Applies transformation to game entities via list comprehension.
+    Returns mapped entity state list.
+    """
+    return [transform_func(e) for e in entities if e is not None]
+
+def normalize_coordinates(x: Numeric, y: Numeric, bounds: int = 1024) -> tuple[float, float]:
+    """
+    Map spatial coordinates to a normalized range (0-1).
+    Used for rendering optimization in tight loops.
+    """
+    return x / bounds, y / bounds
+
+class LootTable:
+    """
+    Container for entity drop rates using custom weighting.
+    """
+    def __init__(self, weights: dict[str, float]) -> None:
+        self.weights: dict[str, float] = weights
+
+    def pick(self) -> str:
+        """
+        Selection of item via weighted cumulative distribution.
+        """
+        choices: List[str] = list(self.weights.keys())
+        probs: List[float] = list(self.weights.values())
+        return random.choices(choices, weights=probs, k=1)[0]
