@@ -1,33 +1,25 @@
-import time
-import sys
-from typing import Any
+import datetime
+from typing import Any, Optional
 
 class GameLogger:
-    """A whimsical logger that prefixes logs with gamer energy levels."""
-    def __init__(self, debug_mode: bool = True):
-        self.debug_mode = debug_mode
-        self.levels = ["AFK", "CASUAL", "TRYHARD", "PRO", "GOD-MODE"]
-        self._energy_index = 0
+    """Custom logger for game state transitions and telemetry."""
+    
+    def __init__(self, prefix: str = "[GAME-50]") -> None:
+        self.prefix: str = prefix
 
-    def _get_timestamp(self) -> str:
-        return time.strftime("%H:%M:%S", time.localtime())
+    def log(self, message: Any, level: str = "INFO") -> None:
+        """Formats and prints message with a creative timestamp."""
+        timestamp: str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"{self.prefix} {timestamp} | {level.upper():<7} | {str(message)}")
 
-    def log(self, event: str, data: Any = None) -> None:
-        if not self.debug_mode:
-            return
-        
-        status = self.levels[self._energy_index]
-        message = f"[{self._get_timestamp()}] <{status}> {event}"
-        if data:
-            message += f" | PayLoad: {data}"
-        
-        print(message, file=sys.stdout)
-        self._cycle_energy()
+    def debug_frame(self, frame_id: int, stats: dict[str, float]) -> None:
+        """Visual representation of frame telemetry for developers."""
+        metrics: str = " | ".join([f"{k}:{v:.2f}" for k, v in stats.items()])
+        self.log(f"Frame #{frame_id:04d} -> {{{metrics}}}", "DEBUG")
 
-    def _cycle_energy(self) -> None:
-        self._energy_index = (self._energy_index + 1) % len(self.levels)
+    def error(self, err: Exception, context: Optional[str] = None) -> None:
+        """Graceful exception handling for runtime game failures."""
+        err_msg: str = f"{context + ': ' if context else ''}{type(err).__name__}: {err}"
+        self.log(err_msg, "CRITICAL")
 
-    def error(self, msg: str) -> None:
-        print(f"!!! CRITICAL LAG: {msg} !!!", file=sys.stderr)
-
-logger = GameLogger()
+logger: GameLogger = GameLogger()
