@@ -1,48 +1,66 @@
-import functools
-import collections
+import random
+import time
+from typing import Any, Callable, TypeVar
 
-class GameStateCache:
-    def __init__(self, capacity=1024):
-        self.cache = collections.OrderedDict()
-        self.capacity = capacity
+T = TypeVar("T")
 
-    def __call__(self, func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            key = (args, tuple(sorted(kwargs.items())))
-            if key in self.cache:
-                self.cache.move_to_end(key)
-                return self.cache[key]
-            
-            result = func(*args, **kwargs)
-            self.cache[key] = result
-            self.cache.move_to_end(key)
-            
-            if len(self.cache) > self.capacity:
-                self.cache.popitem(last=False)
-            return result
-        return wrapper
 
-@GameStateCache(capacity=2048)
-def calculate_collision_vector(pos_a, pos_b, velocity):
-    # Simulated expensive vector math for gaming engine
-    dx, dy = pos_b[0] - pos_a[0], pos_b[1] - pos_a[1]
-    dist = (dx**2 + dy**2)**0.5
-    if dist == 0:
-        return (0, 0)
-    return ((dx / dist) * velocity, (dy / dist) * velocity)
+class ServerWipeError(Exception):
+    """Raised when network retries run out of respawn lives."""
 
-class EventDispatcher:
-    def __init__(self):
-        self._handlers = {}
 
-    def dispatch(self, event_type, *args):
-        handler = self._handlers.get(event_type)
-        if handler:
-            return handler(*args)
+class NetworkRespawnHandler:
+    """RPG-style retry mechanic for gaming network calls with crit-dodge timing."""
 
-    def register(self, event_type):
-        def decorator(f):
-            self._handlers[event_type] = f
-            return f
-        return decorator
+    def __init__(
+        self,
+        max_respawns: int = 3,
+        base_cooldown: float = 0.4,
+        parry_chance: float = 0.2,
+        target_exceptions: tuple[type[BaseException], ...] = (ConnectionError, TimeoutError, OSError),
+    ) -> None:
+        self.max_respawns = max_respawns
+        self.base_cooldown = base_cooldown
+        self.parry_chance = parry_chance
+        self.target_exceptions = target_exceptions
+
+    def __call__(self, func: Callable[..., T]) -> Callable[..., T]:
+        def respawn_wrapper(*args: Any, **kwargs: Any) -> T:
+            lives_remaining = self.max_respawns
+            attempt = 0
+
+            while lives_remaining > 0:
+                try:
+                    return func(*args, **kwargs)
+                except self.target_exceptions as err:
+                    lives_remaining -= 1
+                    attempt += 1
+
+                    if lives_remaining == 0:
+                        raise ServerWipeError(
+                            f"Match connection wiped after {attempt} attempts: {err}"
+                        ) from err
+
+                    # Crit parry: chance to bypass backoff delay immediately
+                    if random.random() <= self.parry_chance:
+                        continue
+
+                    # Gamified exponential backoff with frame-jitter
+                    jitter = random.uniform(0.016, 0.064)
+                    delay = (self.base_cooldown * (2 ** (attempt - 1))) + jitter
+                    time.sleep(delay)
+
+            raise ServerWipeError("Out of respawns for network packet delivery.")
+
+        return respawn_wrapper
+
+
+def execute_with_respawn(
+    func: Callable[..., T],
+    *args: Any,
+    respawns: int = 3,
+    **kwargs: Any,
+) -> T:
+    """Inline runner executing network operation under respawn retry logic."""
+    handler = NetworkRespawnHandler(max_respawns=respawns)
+    return handler(func)(*args, **kwargs)
