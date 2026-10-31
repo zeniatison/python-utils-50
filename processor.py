@@ -1,65 +1,47 @@
-import math
-from dataclasses import dataclass
-from typing import Dict, Any, List, Iterator
+import struct
+from typing import Dict, List, Any, Generator, Tuple
 
 
-@dataclass(frozen=True)
-class CommandFrame:
-    frame_id: int
-    player_id: str
-    move_axis: tuple[float, float]
-    actions: list[str]
+class BitFieldEntityProcessor:
+    """Packs and unpacks spatial entity tick data into packed bitfields for low-latency gaming sync."""
+
+    # Payload schema: header (16-bit: health 8b, team 4b, flags 4b) + norm_x (16-bit) + norm_y (16-bit)
+    PACK_FORMAT = ">HHH"
+
+    def __init__(self, map_bounds: Tuple[float, float] = (1024.0, 1024.0)):
+        self.max_x, self.max_y = map_bounds
+
+    def pack_entity(self, health: int, team: int, flags: int, x: float, y: float) -> bytes:
+        """Quantizes position floats and packs metadata into a compact 6-byte payload."""
+        norm_x = int(min(max(x, 0.0), self.max_x) / self.max_x * 65535)
+        norm_y = int(min(max(y, 0.0), self.max_y) / self.max_y * 65535)
+        
+        header = ((health & 0xFF) << 8) | ((team & 0x0F) << 4) | (flags & 0x0F)
+        return struct.pack(self.PACK_FORMAT, header, norm_x, norm_y)
+
+    def unpack_entity(self, payload: bytes) -> Dict[str, Any]:
+        """Expands 6-byte packed state back into readable entity dict."""
+        header, norm_x, norm_y = struct.unpack(self.PACK_FORMAT, payload)
+        
+        return {
+            "health": (header >> 8) & 0xFF,
+            "team": (header >> 4) & 0x0F,
+            "flags": header & 0x0F,
+            "x": round((norm_x / 65535.0) * self.max_x, 2),
+            "y": round((norm_y / 65535.0) * self.max_y, 2),
+        }
+
+    def stream_deltas(self, baseline: List[bytes], current: List[bytes]) -> Generator[Tuple[int, bytes], None, None]:
+        """Yields entity index and payload for states modified since last server tick."""
+        for idx, (old_frame, new_frame) in enumerate(zip(baseline, current)):
+            if old_frame != new_frame:
+                yield idx, new_frame
 
 
-class FrameValidationError(Exception):
-    pass
-
-
-class GameInputProcessor:
-    ALLOWED_ACTIONS = {"LIGHT_ATTACK", "HEAVY_ATTACK", "BLOCK", "DASH", "INTERACT"}
-
-    def __init__(self, raw_frames: List[Dict[str, Any]]):
-        self.raw_frames = raw_frames
-        self.corrupted_count = 0
-
-    def _validate_raw_payload(self, raw: Dict[str, Any]) -> CommandFrame:
-        if not isinstance(raw, dict):
-            raise FrameValidationError("Payload must be a dictionary")
-
-        required_keys = {"frame_id", "player_id", "move_axis", "actions"}
-        if not required_keys.issubset(raw.keys()):
-            missing = required_keys - raw.keys()
-            raise FrameValidationError(f"Missing required packet keys: {missing}")
-
-        x, y = raw["move_axis"]
-        if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
-            raise FrameValidationError("Move axis coordinates must be numeric")
-
-        magnitude = math.hypot(x, y)
-        if magnitude > 1.001:
-            raise FrameValidationError(f"Stick vector magnitude exceeds limit: {magnitude:.2f}")
-
-        actions = raw["actions"]
-        if not isinstance(actions, list) or not set(actions).issubset(self.ALLOWED_ACTIONS):
-            raise FrameValidationError("Invalid or unknown action requested")
-
-        return CommandFrame(
-            frame_id=int(raw["frame_id"]),
-            player_id=str(raw["player_id"]),
-            move_axis=(float(x), float(y)),
-            actions=list(actions)
-        )
-
-    def run_loop(self) -> Iterator[CommandFrame]:
-        last_frame_id = -1
-        for packet in self.raw_frames:
-            try:
-                frame = self._validate_raw_payload(packet)
-                if frame.frame_id <= last_frame_id:
-                    raise FrameValidationError(f"Out-of-order frame ID: {frame.frame_id}")
-                
-                last_frame_id = frame.frame_id
-                yield frame
-            except (FrameValidationError, TypeError, ValueError):
-                self.corrupted_count += 1
-                continue
+def calculate_tick_checksum(payloads: List[bytes]) -> int:
+    """Calculates FNV-1a 32-bit hash across active entity byte payloads for tick verification."""
+    checksum = 0x811C9DC5
+    for chunk in payloads:
+        for byte in chunk:
+            checksum = ((checksum ^ byte) * 0x01000193) & 0xFFFFFFFF
+    return checksum
