@@ -1,47 +1,32 @@
-import struct
-from typing import Dict, List, Any, Generator, Tuple
+import math
+from typing import Any, Iterable, Dict
 
+def calculate_dps(damage: float, interval: float) -> float:
+    return damage / max(interval, 0.001)
 
-class BitFieldEntityProcessor:
-    """Packs and unpacks spatial entity tick data into packed bitfields for low-latency gaming sync."""
+def normalize_vector(vector: tuple) -> tuple:
+    magnitude = math.sqrt(sum(x**2 for x in vector))
+    return tuple(x / magnitude for x in vector) if magnitude > 0 else vector
 
-    # Payload schema: header (16-bit: health 8b, team 4b, flags 4b) + norm_x (16-bit) + norm_y (16-bit)
-    PACK_FORMAT = ">HHH"
+def get_weighted_random(choices: Dict[Any, float]) -> Any:
+    import random
+    total_weight = sum(choices.values())
+    r = random.uniform(0, total_weight)
+    cumulative = 0.0
+    for item, weight in choices.items():
+        cumulative += weight
+        if r <= cumulative:
+            return item
 
-    def __init__(self, map_bounds: Tuple[float, float] = (1024.0, 1024.0)):
-        self.max_x, self.max_y = map_bounds
+def apply_cooldown(start_time: float, current_time: float, duration: float) -> bool:
+    return (current_time - start_time) >= duration
 
-    def pack_entity(self, health: int, team: int, flags: int, x: float, y: float) -> bytes:
-        """Quantizes position floats and packs metadata into a compact 6-byte payload."""
-        norm_x = int(min(max(x, 0.0), self.max_x) / self.max_x * 65535)
-        norm_y = int(min(max(y, 0.0), self.max_y) / self.max_y * 65535)
-        
-        header = ((health & 0xFF) << 8) | ((team & 0x0F) << 4) | (flags & 0x0F)
-        return struct.pack(self.PACK_FORMAT, header, norm_x, norm_y)
+def batch_process(items: Iterable, chunk_size: int = 5) -> Iterable:
+    for i in range(0, len(list(items)), chunk_size):
+        yield list(items)[i:i + chunk_size]
 
-    def unpack_entity(self, payload: bytes) -> Dict[str, Any]:
-        """Expands 6-byte packed state back into readable entity dict."""
-        header, norm_x, norm_y = struct.unpack(self.PACK_FORMAT, payload)
-        
-        return {
-            "health": (header >> 8) & 0xFF,
-            "team": (header >> 4) & 0x0F,
-            "flags": header & 0x0F,
-            "x": round((norm_x / 65535.0) * self.max_x, 2),
-            "y": round((norm_y / 65535.0) * self.max_y, 2),
-        }
+def lerp(start: float, end: float, t: float) -> float:
+    return start + t * (end - start)
 
-    def stream_deltas(self, baseline: List[bytes], current: List[bytes]) -> Generator[Tuple[int, bytes], None, None]:
-        """Yields entity index and payload for states modified since last server tick."""
-        for idx, (old_frame, new_frame) in enumerate(zip(baseline, current)):
-            if old_frame != new_frame:
-                yield idx, new_frame
-
-
-def calculate_tick_checksum(payloads: List[bytes]) -> int:
-    """Calculates FNV-1a 32-bit hash across active entity byte payloads for tick verification."""
-    checksum = 0x811C9DC5
-    for chunk in payloads:
-        for byte in chunk:
-            checksum = ((checksum ^ byte) * 0x01000193) & 0xFFFFFFFF
-    return checksum
+def clamp(value: float, min_val: float, max_val: float) -> float:
+    return max(min_val, min(value, max_val))
