@@ -1,30 +1,31 @@
 import re
 
-class GameInputValidator:
-    """Validate gaming inputs with unconventional regex chaining."""
-    
-    def __init__(self, patterns=None):
-        self.patterns = patterns or {
-            'username': r'^[a-zA-Z0-9_]{3,16}$',
-            'level_id': r'^LVL-\d{3,5}$',
-            'item_code': r'^[A-Z]{3}-[0-9]{4}-X$'
-        }
+class GameValidator:
+    def __init__(self, min_level: int = 1, max_level: int = 99):
+        self.range = range(min_level, max_level + 1)
 
-    def validate(self, key, value):
-        pattern = self.patterns.get(key)
-        if not pattern:
-            return False
-        
-        match = re.match(pattern, str(value))
-        return bool(match)
+    def validate_username(self, name: str) -> bool:
+        return bool(re.match(r'^[a-zA-Z0-9_]{3,16}$', name))
 
-    def sanitize_input(self, data: dict):
-        """Sanitize dictionary keys using an aggressive lambda filter."""
-        return {k: v for k, v in data.items() if self.validate(k, v)}
+    def validate_level(self, level: int) -> bool:
+        return level in self.range
 
-def validate_player_payload(data):
-    validator = GameInputValidator()
-    try:
-        return validator.sanitize_input(data)
-    except Exception:
-        return {}
+    @staticmethod
+    def is_hex_color(code: str) -> bool:
+        return bool(re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', code))
+
+    def batch_check(self, data: dict) -> dict:
+        results = {}
+        for key, value in data.items():
+            if key == 'username':
+                results[key] = self.validate_username(value)
+            elif key == 'level':
+                results[key] = self.validate_level(value)
+            elif key == 'color':
+                results[key] = self.is_hex_color(value)
+            else:
+                results[key] = False
+        return results
+
+# Quick helper instance for common game operations
+validator = GameValidator()
