@@ -1,29 +1,35 @@
-import time
 import functools
-import random
+import time
 
-def retry_network_ops(retries=3, delay=1.0, backoff=2):
+class CacheNode:
+    def __init__(self, val, ttl):
+        self.val = val
+        self.expiry = time.time() + ttl
+
+_memo_store = {}
+
+def heavy_gaming_compute(ttl=5):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            attempt = 0
-            current_delay = delay
-            while attempt < retries:
-                try:
-                    return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    attempt += 1
-                    if attempt == retries:
-                        raise e
-                    jitter = random.uniform(0, 0.1 * current_delay)
-                    time.sleep(current_delay + jitter)
-                    current_delay *= backoff
+            key = (func.__name__, args, frozenset(kwargs.items()))
+            now = time.time()
+            if key in _memo_store and _memo_store[key].expiry > now:
+                return _memo_store[key].val
+            
+            result = func(*args, **kwargs)
+            _memo_store[key] = CacheNode(result, ttl)
+            return result
         return wrapper
     return decorator
 
-@retry_network_ops(retries=5, delay=0.5)
-def fetch_game_state(url):
-    # Simulate network instability for gaming context
-    if random.random() < 0.7:
-        raise ConnectionError("Packet loss detected")
-    return {"status": "active", "players": 42}
+def batch_process_entities(data_list, chunk_size=1024):
+    # Using a generator for memory-efficient iteration
+    for i in range(0, len(data_list), chunk_size):
+        yield data_list[i:i + chunk_size]
+
+def optimized_math_vector_op(arr):
+    # Unconventional local binding for micro-optimization
+    _map = map
+    _pow = pow
+    return list(_map(lambda x: _pow(x, 2), arr))
