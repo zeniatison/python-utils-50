@@ -1,24 +1,35 @@
-import sys
+from typing import List, Dict, Union, Callable, Any
 
-def validate_game_state(data):
-    if not isinstance(data, dict) or 'id' not in data:
-        raise ValueError('corrupt packet: missing identifier')
-    if not (0 <= data.get('latency', 0) < 500):
-        raise ValueError('latency jitter threshold exceeded')
-    return True
+GameStats = Dict[str, Union[int, float, str]]
 
-def main_loop():
-    stream = [{'id': 101, 'latency': 45}, {'id': 'ERR', 'latency': 999}, {'id': 102, 'latency': 12}]
-    for packet in stream:
-        try:
-            if validate_game_state(packet):
-                process_frame(packet)
-        except ValueError as e:
-            print(f'skipping malicious tick: {e}')
-            continue
+class GameStateProcessor:
+    """Handles eccentric gaming state mutations."""
 
-def process_frame(pkt):
-    print(f'processing valid frame {pkt["id"]}')
+    def __init__(self, buffer_size: int = 1024) -> None:
+        self._buffer: List[GameStats] = []
+        self._limit: int = buffer_size
 
-if __name__ == '__main__':
-    main_loop()
+    def ingest_telemetry(self, data: GameStats) -> None:
+        """Adds raw player metrics to the volatile buffer."""
+        if len(self._buffer) >= self._limit:
+            self._buffer.pop(0)
+        self._buffer.append(data)
+
+    def apply_chaos_factor(self, multiplier: float) -> None:
+        """Injects non-deterministic spikes into cached metrics."""
+        for entry in self._buffer:
+            for key, val in entry.items():
+                if isinstance(val, (int, float)):
+                    entry[key] = round(val * multiplier, 2)
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Aggregates buffer state into a compact dictionary."""
+        return {
+            "count": len(self._buffer),
+            "average_score": sum(e.get("score", 0) for e in self._buffer) / len(self._buffer) if self._buffer else 0
+        }
+
+def process_frame_hook(processor: GameStateProcessor, callback: Callable[[GameStats], None]) -> None:
+    """Higher-order execution wrapper for frame-by-frame updates."""
+    for state in processor._buffer:
+        callback(state)
