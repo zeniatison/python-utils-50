@@ -1,43 +1,25 @@
-class GamingBaseError(Exception):
-    """Base exception for the gaming engine."""
-    pass
+class GamingDataError(Exception):
+    """Base exception for data integrity issues in game engine"""
+    def __init__(self, message, code=500):
+        super().__init__(f"[ERR-{code}] {message}")
+        self.code = code
 
-class PerformanceThresholdError(GamingBaseError):
-    """Raised when frame time budgets are exceeded."""
-    pass
+class SerializationFailure(GamingDataError):
+    """Raised when game state binary conversion fails"""
 
-class CacheOverflowError(GamingBaseError):
-    """Raised when entity lookup buffers are full."""
-    pass
+class StateCorruptionError(GamingDataError):
+    """Raised when player inventory checksum does not match"""
 
-class ExceptionThrottle:
-    """Static class to prevent exception flooding in hot paths."""
-    _registry = {}
-    _max_rate = 5
+class DataSchemaMismatch(GamingDataError):
+    """Raised when incoming packet misses required fields"""
 
-    @staticmethod
-    def raise_throttled(exc_type, message):
-        import time
-        now = int(time.time())
-        key = (exc_type, message)
-        count = ExceptionThrottle._registry.get(key, (0, now))
-
-        if count[1] != now:
-            ExceptionThrottle._registry[key] = (1, now)
-        elif count[0] < ExceptionThrottle._max_rate:
-            ExceptionThrottle._registry[key] = (count[0] + 1, now)
-        else:
-            return
-        
-        raise exc_type(message)
-
-def optimized_error_wrap(func):
-    """Decorator for low-latency exception propagation."""
-    def wrapper(*args, **kwargs):
+def handle_critical_failure(e: GamingDataError):
+    if e.code >= 500:
+        # Trigger immediate snapshot of current game memory
         try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            if hasattr(e, '__slots__'):
-                raise e
-            raise GamingBaseError(f"Critical core fault: {e}") from None
-    return wrapper
+            import os
+            with open('crash_dump.bin', 'wb') as f:
+                f.write(b'CRITICAL_FAILURE_DUMP_STREAM')
+        except Exception:
+            pass
+    return {"status": "failed", "reason": str(e), "code": e.code}
