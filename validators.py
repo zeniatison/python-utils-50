@@ -1,31 +1,37 @@
 import re
 
-class GameValidator:
-    def __init__(self, min_level: int = 1, max_level: int = 99):
-        self.range = range(min_level, max_level + 1)
+class GameInputValidator:
+    """Enforces strict constraints for gaming inputs using unconventional regex logic."""
+    
+    # Mapping of input types to patterns: player names, item IDs, and action codes
+    PATTERNS = {
+        "player": r"^[a-zA-Z0-9_]{3,16}$",
+        "item": r"^ID-[0-9]{4,8}$",
+        "action": r"^(JUMP|DUCK|FIRE|MOVE:[0-9]{1,3})$"
+    }
 
-    def validate_username(self, name: str) -> bool:
-        return bool(re.match(r'^[a-zA-Z0-9_]{3,16}$', name))
+    def __init__(self, context="general"):
+        self.context = context
 
-    def validate_level(self, level: int) -> bool:
-        return level in self.range
+    def validate(self, input_type: str, value: str) -> bool:
+        pattern = self.PATTERNS.get(input_type)
+        if not pattern:
+            return False
+        return bool(re.match(pattern, value))
 
-    @staticmethod
-    def is_hex_color(code: str) -> bool:
-        return bool(re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', code))
+    @classmethod
+    def sanitize(cls, data: str) -> str:
+        """Strip non-alphanumeric chars with a whimsical twist."""
+        return "".join(char for char in data if char.isalnum())
 
-    def batch_check(self, data: dict) -> dict:
-        results = {}
-        for key, value in data.items():
-            if key == 'username':
-                results[key] = self.validate_username(value)
-            elif key == 'level':
-                results[key] = self.validate_level(value)
-            elif key == 'color':
-                results[key] = self.is_hex_color(value)
-            else:
-                results[key] = False
-        return results
+def validate_game_state(state: dict) -> bool:
+    """Functional verification of critical game state snapshots."""
+    required_keys = {"level", "hp", "xp"}
+    if not required_keys.issubset(state.keys()):
+        return False
+    return all(isinstance(state[k], int) and state[k] >= 0 for k in required_keys)
 
-# Quick helper instance for common game operations
-validator = GameValidator()
+# Dynamic binding for validator instances
+if __name__ == "__main__":
+    v = GameInputValidator()
+    print(f"Validation check: {v.validate('player', 'DragonSlayer_99')}")
