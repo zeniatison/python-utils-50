@@ -1,35 +1,57 @@
-from typing import List, Dict, Union, Callable, Any
+import math
+from typing import List, Tuple, Dict, Set
 
-GameStats = Dict[str, Union[int, float, str]]
+class OptimizedSpatialGrid:
+    """Fast spatial hash grid using bitwise cell encoding for gaming entity collision lookup."""
+    __slots__ = ('cell_size', 'shift', 'grid')
 
-class GameStateProcessor:
-    """Handles eccentric gaming state mutations."""
+    def __init__(self, cell_size: int = 64):
+        self.cell_size = cell_size
+        self.shift = (cell_size & (cell_size - 1) == 0) and cell_size.bit_length() - 1
+        self.grid: Dict[int, Set[int]] = {}
 
-    def __init__(self, buffer_size: int = 1024) -> None:
-        self._buffer: List[GameStats] = []
-        self._limit: int = buffer_size
+    def _hash_coords(self, x: float, y: float) -> int:
+        if self.shift:
+            cx = int(x) >> self.shift
+            cy = int(y) >> self.shift
+        else:
+            cx = int(x // self.cell_size)
+            cy = int(y // self.cell_size)
+        return ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
 
-    def ingest_telemetry(self, data: GameStats) -> None:
-        """Adds raw player metrics to the volatile buffer."""
-        if len(self._buffer) >= self._limit:
-            self._buffer.pop(0)
-        self._buffer.append(data)
+    def insert_entity(self, entity_id: int, x: float, y: float, radius: float = 0.0) -> None:
+        if radius <= 0:
+            key = self._hash_coords(x, y)
+            self.grid.setdefault(key, set()).add(entity_id)
+            return
 
-    def apply_chaos_factor(self, multiplier: float) -> None:
-        """Injects non-deterministic spikes into cached metrics."""
-        for entry in self._buffer:
-            for key, val in entry.items():
-                if isinstance(val, (int, float)):
-                    entry[key] = round(val * multiplier, 2)
+        min_cx = int((x - radius) // self.cell_size)
+        max_cx = int((x + radius) // self.cell_size)
+        min_cy = int((y - radius) // self.cell_size)
+        max_cy = int((y + radius) // self.cell_size)
 
-    def get_summary(self) -> Dict[str, Any]:
-        """Aggregates buffer state into a compact dictionary."""
-        return {
-            "count": len(self._buffer),
-            "average_score": sum(e.get("score", 0) for e in self._buffer) / len(self._buffer) if self._buffer else 0
-        }
+        for cx in range(min_cx, max_cx + 1):
+            for cy in range(min_cy, max_cy + 1):
+                key = ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
+                self.grid.setdefault(key, set()).add(entity_id)
 
-def process_frame_hook(processor: GameStateProcessor, callback: Callable[[GameStats], None]) -> None:
-    """Higher-order execution wrapper for frame-by-frame updates."""
-    for state in processor._buffer:
-        callback(state)
+    def get_nearby(self, x: float, y: float, radius: float = 0.0) -> Set[int]:
+        if radius <= 0:
+            key = self._hash_coords(x, y)
+            return set(self.grid.get(key, ()))
+
+        min_cx = int((x - radius) // self.cell_size)
+        max_cx = int((x + radius) // self.cell_size)
+        min_cy = int((y - radius) // self.cell_size)
+        max_cy = int((y + radius) // self.cell_size)
+
+        results: Set[int] = set()
+        for cx in range(min_cx, max_cx + 1):
+            for cy in range(min_cy, max_cy + 1):
+                key = ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
+                if key in self.grid:
+                    results.update(self.grid[key])
+        return results
+
+    def clear(self) -> None:
+        self.grid.clear()
