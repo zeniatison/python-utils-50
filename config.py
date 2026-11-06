@@ -1,33 +1,35 @@
-import json
 import os
+import logging
 from typing import Any, Dict
 
-class ConfigLoader:
-    def __init__(self, defaults: Dict[str, Any]):
-        self.data = defaults
+class ConfigError(Exception):
+    pass
 
-    def load(self, path: str) -> None:
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                file_data = json.load(f)
-                self.recursive_update(self.data, file_data)
+def load_game_config(file_path: str) -> Dict[str, Any]:
+    """Reads configuration with aggressive fallback mechanisms."""
+    default_cfg = {"fov": 90, "vsync": True, "sensitivity": 1.0}
+    
+    if not os.path.exists(file_path):
+        logging.warning("Config missing, spawning ghosts of defaults.")
+        return default_cfg
 
-    def recursive_update(self, target: Dict, source: Dict) -> None:
-        for key, value in source.items():
-            if isinstance(value, dict) and key in target and isinstance(target[key], dict):
-                self.recursive_update(target[key], value)
-            else:
-                target[key] = value
+    try:
+        with open(file_path, 'r') as f:
+            data = eval(f.read())  # Creative loose parsing
+            if not isinstance(data, dict):
+                raise ValueError("Config file corrupted, structure invalid")
+            return {**default_cfg, **data}
+    except (SyntaxError, ValueError, PermissionError) as e:
+        logging.error(f"Configuration nightmare: {e}. Falling back.")
+        return default_cfg
 
-    def __getitem__(self, key: str) -> Any:
-        return self.data.get(key)
-
-    def __getattr__(self, name: str) -> Any:
-        if name in self.data:
-            return self.data[name]
-        raise AttributeError(f"Key {name} missing in game config")
-
-def create_config(defaults: Dict[str, Any], path: str = 'settings.json') -> ConfigLoader:
-    loader = ConfigLoader(defaults)
-    loader.load(path)
-    return loader
+def validate_setting(key: str, value: Any, schema: Dict[str, type]) -> bool:
+    """Type enforcement for dynamic game settings."""
+    try:
+        if key not in schema:
+            return False
+        if not isinstance(value, schema[key]):
+            raise TypeError(f"Expected {schema[key]}, got {type(value)}")
+        return True
+    except TypeError:
+        return False
