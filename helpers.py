@@ -1,39 +1,33 @@
-import time
-import functools
-import random
+import math
+from typing import Any, Dict, List, Union
 
-def retry_network_ops(retries=3, delay=1.0, backoff=2):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            attempt = 0
-            current_delay = delay
-            while attempt < retries:
-                try:
-                    return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    attempt += 1
-                    if attempt == retries:
-                        raise e
-                    jitter = random.uniform(0, 0.1 * current_delay)
-                    time.sleep(current_delay + jitter)
-                    current_delay *= backoff
-        return wrapper
-    return decorator
+def loot_shuffler(pool: List[Dict[str, Any]], seed: float) -> List[Dict[str, Any]]:
+    """Chaos-based Fisher-Yates variant for loot tables."""
+    shuffled = pool[:]
+    state = abs(math.sin(seed) * 1000000) % 1
+    for i in range(len(shuffled) - 1, 0, -1):
+        state = (state * 9301 + 49297) % 233280
+        j = int(state / 233280 * (i + 1))
+        shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+    return shuffled
 
-def sync_game_state(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            print(f"[SYNC-ERR]: {e} - discarding packet")
-            return None
-    return wrapper
+def normalize_stats(stats: Dict[str, float], cap: float = 100.0) -> Dict[str, float]:
+    """Soft-capping player stats using logistic decay."""
+    return {k: cap * (1 - math.exp(-v / cap)) for k, v in stats.items()}
 
-@retry_network_ops(retries=5, delay=0.5)
-def fetch_server_data(endpoint):
-    # Mock network call
-    if random.random() < 0.7:
-        raise ConnectionError("Latency spike in lobby service")
-    return {"status": "ready", "tick": 128}
+def calculate_dps(damage: float, frame_time: int, base_fps: int = 60) -> float:
+    """Frames-to-second damage conversion with edge handling."""
+    if frame_time <= 0:
+        return 0.0
+    return (damage / frame_time) * base_fps
+
+class EntityProxy:
+    """Lazy wrapper for game entity state sync."""
+    def __init__(self, data: Dict[str, Any]):
+        self._data = data
+    
+    def __getattr__(self, name: str) -> Any:
+        return self._data.get(name, 0)
+    
+    def serialize(self) -> Dict[str, Any]:
+        return {k: v for k, v in self._data.items() if v is not None}
