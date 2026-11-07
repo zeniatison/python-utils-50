@@ -1,57 +1,53 @@
 import math
-from typing import List, Tuple, Dict, Set
+from typing import Dict, List, Set, Tuple
 
-class OptimizedSpatialGrid:
-    """Fast spatial hash grid using bitwise cell encoding for gaming entity collision lookup."""
-    __slots__ = ('cell_size', 'shift', 'grid')
+class EntitySpatialIndex:
+    """Bit-packed spatial hash grid for ultra-fast 2D proximity queries in gaming loops."""
+
+    __slots__ = ('cell_size', 'grid', 'entity_cells')
 
     def __init__(self, cell_size: int = 64):
         self.cell_size = cell_size
-        self.shift = (cell_size & (cell_size - 1) == 0) and cell_size.bit_length() - 1
         self.grid: Dict[int, Set[int]] = {}
+        self.entity_cells: Dict[int, int] = {}
 
-    def _hash_coords(self, x: float, y: float) -> int:
-        if self.shift:
-            cx = int(x) >> self.shift
-            cy = int(y) >> self.shift
-        else:
-            cx = int(x // self.cell_size)
-            cy = int(y // self.cell_size)
-        return ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
+    def _hash(self, x: float, y: float) -> int:
+        cx = math.floor(x / self.cell_size)
+        cy = math.floor(y / self.cell_size)
+        return ((cx + 0x7FFF) << 16) | ((cy + 0x7FFF) & 0xFFFF)
 
-    def insert_entity(self, entity_id: int, x: float, y: float, radius: float = 0.0) -> None:
-        if radius <= 0:
-            key = self._hash_coords(x, y)
-            self.grid.setdefault(key, set()).add(entity_id)
+    def update_position(self, entity_id: int, x: float, y: float) -> None:
+        new_hash = self._hash(x, y)
+        old_hash = self.entity_cells.get(entity_id)
+
+        if old_hash == new_hash:
             return
 
-        min_cx = int((x - radius) // self.cell_size)
-        max_cx = int((x + radius) // self.cell_size)
-        min_cy = int((y - radius) // self.cell_size)
-        max_cy = int((y + radius) // self.cell_size)
+        if old_hash is not None and old_hash in self.grid:
+            self.grid[old_hash].discard(entity_id)
+            if not self.grid[old_hash]:
+                del self.grid[old_hash]
 
+        self.entity_cells[entity_id] = new_hash
+        self.grid.setdefault(new_hash, set()).add(entity_id)
+
+    def purge_entity(self, entity_id: int) -> None:
+        old_hash = self.entity_cells.pop(entity_id, None)
+        if old_hash is not None and old_hash in self.grid:
+            self.grid[old_hash].discard(entity_id)
+            if not self.grid[old_hash]:
+                del self.grid[old_hash]
+
+    def query_radius(self, x: float, y: float, radius: float) -> Set[int]:
+        min_cx = math.floor((x - radius) / self.cell_size)
+        max_cx = math.floor((x + radius) / self.cell_size)
+        min_cy = math.floor((y - radius) / self.cell_size)
+        max_cy = math.floor((y + radius) / self.cell_size)
+
+        neighbors: Set[int] = set()
         for cx in range(min_cx, max_cx + 1):
             for cy in range(min_cy, max_cy + 1):
-                key = ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
-                self.grid.setdefault(key, set()).add(entity_id)
-
-    def get_nearby(self, x: float, y: float, radius: float = 0.0) -> Set[int]:
-        if radius <= 0:
-            key = self._hash_coords(x, y)
-            return set(self.grid.get(key, ()))
-
-        min_cx = int((x - radius) // self.cell_size)
-        max_cx = int((x + radius) // self.cell_size)
-        min_cy = int((y - radius) // self.cell_size)
-        max_cy = int((y + radius) // self.cell_size)
-
-        results: Set[int] = set()
-        for cx in range(min_cx, max_cx + 1):
-            for cy in range(min_cy, max_cy + 1):
-                key = ((cx & 0xFFFFFFFF) << 32) | (cy & 0xFFFFFFFF)
-                if key in self.grid:
-                    results.update(self.grid[key])
-        return results
-
-    def clear(self) -> None:
-        self.grid.clear()
+                cell_key = ((cx + 0x7FFF) << 16) | ((cy + 0x7FFF) & 0xFFFF)
+                if cell_key in self.grid:
+                    neighbors.update(self.grid[cell_key])
+        return neighbors
